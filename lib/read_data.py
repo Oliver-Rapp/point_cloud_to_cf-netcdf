@@ -103,57 +103,95 @@ def process_chunk(start, end, data_dict):
 def las_to_df(las_filepath, cf_crs, variable_mapping, xcoord=None, ycoord=None, zcoord=None):
     # Open the LAS file
     las = laspy.read(las_filepath)
-    print('File read in')
+    print(f'File {las_filepath} read in')
 
     data_dict = {}
 
-    # Get x, y, z coordinates and convert them to NumPy arrays. Scalar and offset applied.
+    # 1. Always get coordinates
+    # las.x, .y, .z apply the scale and offset automatically
     data_dict['x'] = np.array(las.x)
     data_dict['y'] = np.array(las.y)
     data_dict['z'] = np.array(las.z)
-
     print('x,y,z added to dict')
 
-    # List of variables to extract
-    variable_list = ['blue', 'red', 'green', 'scan_angle_rank', 'epoch', 'intensity']
+    # 2. Get list of available dimensions in the LAS file (normalize to lowercase)
+    # las.point_format.dimension_names generator converted to list
+    las_dims = {d.lower(): d for d in list(las.point_format.dimension_names)}
 
-    # Iterate over variable_list and check if the variable exists in las.point_format.dimensions
-    for var in variable_list:
-        if var in [dim.name for dim in las.point_format.dimensions]:
-            print('adding ',var,' to dict')
-            data_dict[var] = np.array(las[var])  # Ensure conversion to NumPy array
+    # 3. Dynamically extract variables based on variable_mapping.yml
+    # This replaces the hardcoded variable_list
+    for netcdf_var, details in variable_mapping.items():
+        if 'possible_names' not in details:
+            continue
+            
+        for name in details['possible_names']:
+            lower_name = name.lower()
+            
+            # Check if this possible name exists in the LAS file
+            if lower_name in las_dims:
+                # Use the exact case from the LAS file
+                las_name = las_dims[lower_name]
+                print(f'adding {las_name} to dict (mapped to {netcdf_var})')
+                
+                values = np.array(las[las_name])
 
-    # Convert the dictionary to a pandas DataFrame
-    # Process in smaller chunks, for example, chunks of 10000 rows
+                # 4. Fix Time: Convert GPS Time to Unix Epoch
+                # NetCDF expects "seconds since 1970...", LAS provides "seconds since 1980..."
+                # We add the offset: 1 billion (LAS offset) + 315964800 (GPS-Unix offset)
+                if lower_name == 'gps_time':
+                    # Check global encoding bit 0 if strict, but standard practice is Adjusted GPS Time
+                    # Offset = 1315964800.0
+                    values = values + 1315964800.0
+                    print(f'  - Applied GPS-to-Unix time offset to {las_name}')
+
+                data_dict[name] = values
+                break # Found a match for this variable, stop checking possible names
+
+    # 5. Convert to DataFrame
+    # Note: Chunking here is technically redundant since laspy.read() already loaded 
+    # everything into RAM, but we keep the logic to minimize code changes.
     chunk_size = 10000000
     num_rows = len(data_dict['x'])
 
-    # Process each chunk
     dfs = []
     print('Processing chunks to df')
     for i in range(0, num_rows, chunk_size):
         df_chunk = process_chunk(i, i + chunk_size, data_dict)
-        # If X, Y and Z are equal to lat, lon, altitude
-        if xcoord:
-            df_chunk.rename(columns={'x': xcoord}, inplace=True)
-        if ycoord:
-            df_chunk.rename(columns={'y': ycoord}, inplace=True)
-        if zcoord:
-            df_chunk.rename(columns={'z': zcoord}, inplace=True)
+        
+        # Rename standard coordinate columns if user specified overrides
+        if xcoord: df_chunk.rename(columns={'x': xcoord}, inplace=True)
+        if ycoord: df_chunk.rename(columns={'y': ycoord}, inplace=True)
+        if zcoord: df_chunk.rename(columns={'z': zcoord}, inplace=True)
+        
+        # Ensure default mapping works for create_netcdf
+        if 'X' not in df_chunk.columns and 'x' in df_chunk.columns:
+            df_chunk.rename(columns={'x': 'X'}, inplace=True)
+        if 'Y' not in df_chunk.columns and 'y' in df_chunk.columns:
+            df_chunk.rename(columns={'y': 'Y'}, inplace=True)
+        if 'Z' not in df_chunk.columns and 'z' in df_chunk.columns:
+            df_chunk.rename(columns={'z': 'Z'}, inplace=True)
+
         dfs.append(df_chunk)
 
     print('Calculating lat/lon')
     if not all(col in dfs[0].columns for col in ['latitude', 'longitude']):
-        cf_crs = get_cf_crs()
-        processed_dfs = []
-        for df in dfs:
-            # Calculate latitude and longitude from X and Y and the CRS
-            lat, lon = utm_to_latlon(df['x'].values, df['y'].values, cf_crs)
-            df['latitude'], df['longitude'] = lat, lon
-            processed_dfs.append(df)
-        dfs = processed_dfs
-    else:
-        pass
+        # If CRS config is provided, use it. Otherwise try to guess.
+        # Note: laspy provides CRS info in las.header.vlrs, but integrating that 
+        # requires more logic. Using your existing config/crs approach is easiest.
+        if cf_crs is None:
+             cf_crs = get_cf_crs() # Fallback to PLY logic (might fail for LAS)
+        
+        if cf_crs:
+            processed_dfs = []
+            for df in dfs:
+                # Find the X and Y columns for transformation
+                x_col = xcoord if xcoord else 'X'
+                y_col = ycoord if ycoord else 'Y'
+                
+                lat, lon = utm_to_latlon(df[x_col].values, df[y_col].values, cf_crs)
+                df['latitude'], df['longitude'] = lat, lon
+                processed_dfs.append(df)
+            dfs = processed_dfs
 
     print('combining dataframes')
     combined_df = combine_dataframes(dfs)

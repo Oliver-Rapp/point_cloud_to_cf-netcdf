@@ -198,17 +198,21 @@ def main():
 
     # Load in the grid mapping config file if it exists and not None
     if args.crs_config:
+        # Check existence BEFORE the try block to avoid catching SystemExit
+        if not os.path.exists(args.crs_config):
+            logger.error(f"Error: The grid mapping configuration file '{args.crs_config}' could not be found.")
+            sys.exit(1)
+
         try:
             logger.info(f"Loading grid mapping from config file")
-            if not os.path.exists(args.crs_config):
-                logger.error(f"Error: The grid mapping configuration file '{args.crs_config}' could not be found.")
-                logger.error("Check that the filepath is correct")
-                sys.exit(1)
             with open(args.crs_config, "r") as file:
                 cf_crs = yaml.safe_load(file)
             logger.info("CF grid mapping configuration file loaded successfully")
-        except:
-            crs_errors, crs_warnings = [f'Unable to load CRS from {args.crs_config}']
+        except Exception as e:
+            # Fix the unpacking error by providing two lists
+            cf_crs = None
+            crs_errors = [f'Unable to load CRS from {args.crs_config}: {e}']
+            crs_warnings = []
     elif args.proj4str:
         # Check if valid proj4 string and convert that
         logger.info("Trying to calculate a CF grid mapping from the PROJ.4 string")
