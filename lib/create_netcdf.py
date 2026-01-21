@@ -197,3 +197,75 @@ def create_netcdf(pc_df, wavelength_source, variable_mapping, output_filepath,
 
     netcdf.assign_global_attributes(global_attributes)
     netcdf.close()
+
+def create_netcdf_stream(metadata, data_generator, variable_mapping, output_filepath, global_attributes, cf_crs):
+    """
+    Creates NetCDF by streaming data chunk-by-chunk. 
+    Uses NO pandas dataframes.
+    """
+    # Initialize Dataset
+    with nc.Dataset(output_filepath, mode='w', format='NETCDF4') as ncfile:
+        
+        # 1. Dimensions
+        num_points = metadata['num_points']
+        ncfile.createDimension('point', size=num_points)
+        
+        # 2. Create Variables (Empty for now)
+        nc_vars = {}
+        
+        # Create 'point' index variable
+        point_var = ncfile.createVariable('point', 'f4', ('point',), zlib=True)
+        point_var[:] = np.arange(num_points, dtype=np.float32)
+        point_var.setncattr('units', '1')
+        point_var.setncattr('coverage_content_type', 'coordinate')
+        
+        # Create all other variables based on mapping
+        # We look at the mapping file to decide what to create
+        all_target_vars = ['latitude', 'longitude', 'altitude', 'X', 'Y', 'Z'] + list(variable_mapping.keys())
+        
+        for var_name in set(all_target_vars):
+            if var_name in variable_mapping:
+                details = variable_mapping[var_name]
+                # Default to float64 if not specified
+                dtype = details.get('dtype', 'f8')
+                
+                # Create variable with compression
+                v = ncfile.createVariable(var_name, dtype, ('point',), zlib=True, complevel=4)
+                
+                # Set attributes
+                if 'attributes' in details:
+                    for attr, val in details['attributes'].items():
+                        v.setncattr(attr, val)
+                
+                nc_vars[var_name] = v
+
+        # 3. Write CRS
+        if cf_crs:
+            crs = ncfile.createVariable('crs', 'i4')
+            for attr, value in cf_crs.items():
+                crs.setncattr(attr, value)
+            
+        # 4. Write Global Attributes
+        for attr, value in global_attributes.items():
+            if value not in [None, '']:
+                ncfile.setncattr(attr, value)
+
+        # 5. STREAMING LOOP
+        print(f"Starting stream write for {num_points} points...")
+        current_idx = 0
+        
+        for chunk_idx, data_dict in enumerate(data_generator):
+            # Calculate slice indices
+            chunk_len = len(data_dict['X'])
+            end_idx = current_idx + chunk_len
+            
+            # Write data for this chunk
+            for var_name, data_array in data_dict.items():
+                if var_name in nc_vars:
+                    nc_vars[var_name][current_idx:end_idx] = data_array
+            
+            current_idx = end_idx
+            if chunk_idx % 5 == 0:
+                print(f"  Processed {current_idx} / {num_points} points...")
+
+    print(f"Finished writing {output_filepath}")

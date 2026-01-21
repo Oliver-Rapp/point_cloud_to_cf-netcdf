@@ -360,3 +360,82 @@ def read_hyspex_stream(
             yield stacked
 
     return _generator(), wavelengths
+
+
+def get_las_metadata(las_filepath, cf_crs):
+    """
+    Reads LAS header to get bounds and point count without loading data.
+    Returns dictionary with counts and computed lat/lon bounds.
+    """
+    with laspy.open(las_filepath) as f:
+        header = f.header
+        count = header.point_count
+        
+        # Get bounding box
+        min_x, min_y, min_z = header.mins
+        max_x, max_y, max_z = header.maxs
+        
+        # Reproject corners to get Lat/Lon bounds for global attributes
+        # (Approximate but sufficient for metadata)
+        xs = [min_x, max_x, min_x, max_x]
+        ys = [min_y, min_y, max_y, max_y]
+        
+        lats, lons = utm_to_latlon(np.array(xs), np.array(ys), cf_crs)
+        
+        return {
+            'num_points': count,
+            'x_min': min_x, 'x_max': max_x,
+            'y_min': min_y, 'y_max': max_y,
+            'z_min': min_z, 'z_max': max_z,
+            'lat_min': np.min(lats), 'lat_max': np.max(lats),
+            'lon_min': np.min(lons), 'lon_max': np.max(lons)
+        }
+
+def read_las_generator(las_filepath, cf_crs, variable_mapping, chunk_size=1_000_000):
+    """
+    Yields chunks of LAS data as dictionaries of NumPy arrays.
+    Replaces las_to_df for memory efficiency.
+    """
+    with laspy.open(las_filepath) as f:
+        # Create a lookup for dimension names (normalize to lowercase)
+        las_dims = {d.lower(): d for d in list(f.header.point_format.dimension_names)}
+        
+        # Iterate over the file in chunks
+        for chunk in f.chunk_iterator(chunk_size):
+            data = {}
+            
+            # 1. Get Coordinates (Always needed)
+            # laspy applies scale/offset automatically
+            data['X'] = np.array(chunk.x)
+            data['Y'] = np.array(chunk.y)
+            data['Z'] = np.array(chunk.z)
+            
+            # 2. Convert to Lat/Lon
+            lat, lon = utm_to_latlon(data['X'], data['Y'], cf_crs)
+            data['latitude'] = lat
+            data['longitude'] = lon
+            
+            # 3. Get other variables based on mapping
+            for netcdf_var, details in variable_mapping.items():
+                # Skip coords we already handled
+                if netcdf_var in ['X', 'Y', 'Z', 'latitude', 'longitude', 'altitude']:
+                    continue
+                
+                if 'possible_names' in details:
+                    for name in details['possible_names']:
+                        lower_name = name.lower()
+                        if lower_name in las_dims:
+                            val = np.array(chunk[las_dims[lower_name]])
+                            
+                            # Handle Time Conversion (GPS -> Unix)
+                            if lower_name == 'gps_time':
+                                val = val + 1315964800.0
+                                
+                            data[netcdf_var] = val
+                            break # Found match, move to next var
+
+            # 4. Handle Altitude alias if not present
+            if 'altitude' not in data:
+                data['altitude'] = data['Z']
+
+            yield data

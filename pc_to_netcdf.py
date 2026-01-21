@@ -3,6 +3,9 @@ from lib.read_data import read_hyspex_stream, ply_to_df, las_to_df, get_cf_crs, 
 from lib.create_netcdf import create_netcdf
 from lib.global_attributes import GlobalAttributes
 from lib.variable_mapping import VariableMapping
+from lib.read_data import get_las_metadata, read_las_generator
+from lib.create_netcdf import create_netcdf_stream
+from datetime import datetime, timezone 
 import argparse
 import yaml
 import toml
@@ -282,9 +285,52 @@ def main():
         pc_df = ply_to_df(args.ply_filepath, cf_crs, variable_mapping.dict, args.xcoord, args.ycoord, args.zcoord)
         logger.info(f"Data from {args.ply_filepath} loaded in successfully")
     elif args.las_filepath:
-        logger.info(f"Trying to load the data from {args.las_filepath} and write them to a pandas dataframe")
-        pc_df = las_to_df(args.las_filepath, cf_crs, variable_mapping.dict, args.xcoord, args.ycoord, args.zcoord)
-        logger.info(f"Data from {args.las_filepath} loaded in successfully")
+        logger.info(f"Processing LAS in streaming mode: {args.las_filepath}")
+        
+        # 1. Load Global Attributes EARLY (normally done later in the script)
+        # We need them now because we are going to write and exit immediately.
+        logger.info("Reading in global attributes (Early Load)")
+        global_attributes = GlobalAttributes()
+        global_attributes.read_global_attributes(args.user_global_attributes, args.met_global_attributes)
+
+        # 2. Get Metadata Fast (Header only, no heavy memory usage)
+        metadata = get_las_metadata(args.las_filepath, cf_crs)
+        
+        # 3. Update Global Attributes with bounds from header
+        ga = global_attributes.dict
+        ga['geospatial_lat_min'] = metadata['lat_min']
+        ga['geospatial_lat_max'] = metadata['lat_max']
+        ga['geospatial_lon_min'] = metadata['lon_min']
+        ga['geospatial_lon_max'] = metadata['lon_max']
+        ga['geospatial_vertical_min'] = metadata['z_min']
+        ga['geospatial_vertical_max'] = metadata['z_max']
+        
+        # Add creation timestamp
+        if 'date_created' not in ga:
+            now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+            ga['date_created'] = now
+            ga['history'] = f"{now}: Converted from LAS to NetCDF via streaming."
+
+        # 4. Create the Data Generator (Lazy Reader)
+        las_generator = read_las_generator(
+            args.las_filepath,
+            cf_crs,
+            variable_mapping.dict,
+            chunk_size=1_000_000 # Adjust based on RAM
+        )
+        
+        # 5. Stream Write to NetCDF
+        create_netcdf_stream(
+            metadata,
+            las_generator,
+            variable_mapping.dict,
+            args.output_filepath,
+            ga,
+            cf_crs
+        )
+        
+        logger.info("LAS Streaming conversion complete.")
+        sys.exit(0) # <--- CRITICAL: Stop here so we don't hit the old logic
     else:
         logger.error("Error: No input file provided")
         sys.exit(1)
