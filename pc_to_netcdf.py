@@ -196,6 +196,10 @@ def main():
     else:
         logger.error("Global attributes must be provided in a JSON string or TOML or YAML file.")
 
+    cf_crs = None
+    crs_errors = []
+    crs_warnings = []
+
     # Load in the grid mapping config file if it exists and not None
     if args.crs_config:
         # Check existence BEFORE the try block to avoid catching SystemExit
