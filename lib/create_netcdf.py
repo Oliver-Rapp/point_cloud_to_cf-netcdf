@@ -200,9 +200,12 @@ def create_netcdf(pc_df, wavelength_source, variable_mapping, output_filepath,
 
 def create_netcdf_stream(metadata, data_generator, variable_mapping, output_filepath, global_attributes, cf_crs):
     """
-    Creates NetCDF by streaming data chunk-by-chunk. 
-    Uses NO pandas dataframes.
+    Creates NetCDF by streaming data. 
+    Only creates variables that actually exist in the input stream.
     """
+    import numpy as np
+    import netCDF4 as nc
+
     # Initialize Dataset
     with nc.Dataset(output_filepath, mode='w', format='NETCDF4') as ncfile:
         
@@ -210,59 +213,79 @@ def create_netcdf_stream(metadata, data_generator, variable_mapping, output_file
         num_points = metadata['num_points']
         ncfile.createDimension('point', size=num_points)
         
-        # 2. Create Variables (Empty for now)
+        # 2. Grab the first chunk to see what data we ACTUALLY have
+        try:
+            first_chunk = next(data_generator)
+        except StopIteration:
+            print("Error: Input file appears to be empty.")
+            return
+
+        # 3. Create Variables
         nc_vars = {}
         
-        # Create 'point' index variable
-        point_var = ncfile.createVariable('point', 'f4', ('point',), zlib=True)
-        point_var[:] = np.arange(num_points, dtype=np.float32)
-        point_var.setncattr('units', '1')
-        point_var.setncattr('coverage_content_type', 'coordinate')
+        # Define mandatory coordinates
+        coords = ['latitude', 'longitude', 'altitude', 'X', 'Y', 'Z']
         
-        # Create all other variables based on mapping
-        # We look at the mapping file to decide what to create
-        all_target_vars = ['latitude', 'longitude', 'altitude', 'X', 'Y', 'Z'] + list(variable_mapping.keys())
-        
-        for var_name in set(all_target_vars):
+        # Combine coordinates with dynamic variables that exist in the first chunk
+        # This filters out variables defined in YAML but missing in LAS
+        vars_to_create = set(coords)
+        for var_name in variable_mapping.keys():
+            if var_name in first_chunk:
+                vars_to_create.add(var_name)
+
+        for var_name in vars_to_create:
+            # Determine properties from mapping or defaults
             if var_name in variable_mapping:
                 details = variable_mapping[var_name]
-                # Default to float64 if not specified
                 dtype = details.get('dtype', 'f8')
-                
-                # Create variable with compression
-                v = ncfile.createVariable(var_name, dtype, ('point',), zlib=True, complevel=4)
-                
-                # Set attributes
-                if 'attributes' in details:
-                    for attr, val in details['attributes'].items():
-                        v.setncattr(attr, val)
-                
-                nc_vars[var_name] = v
+                attributes = details.get('attributes', {})
+            else:
+                # Fallback for coords not explicitly in mapping (unlikely given your config)
+                dtype = 'f8'
+                attributes = {}
 
-        # 3. Write CRS
+            # Create variable
+            v = ncfile.createVariable(var_name, dtype, ('point',), zlib=True, complevel=4)
+            
+            # Apply attributes
+            for attr, val in attributes.items():
+                v.setncattr(attr, val)
+            
+            nc_vars[var_name] = v
+
+        # 4. Write CRS
         if cf_crs:
             crs = ncfile.createVariable('crs', 'i4')
             for attr, value in cf_crs.items():
                 crs.setncattr(attr, value)
             
-        # 4. Write Global Attributes
+        # 5. Write Global Attributes
         for attr, value in global_attributes.items():
             if value not in [None, '']:
                 ncfile.setncattr(attr, value)
 
-        # 5. STREAMING LOOP
+        # 6. Write the FIRST chunk (which we already pulled)
         print(f"Starting stream write for {num_points} points...")
         current_idx = 0
         
+        chunk_len = len(first_chunk['X'])
+        end_idx = current_idx + chunk_len
+        
+        for var_name, nc_var in nc_vars.items():
+            if var_name in first_chunk:
+                nc_var[current_idx:end_idx] = first_chunk[var_name]
+        
+        current_idx = end_idx
+        print(f"  Processed {current_idx} / {num_points} points...")
+
+        # 7. Write the REST of the stream
         for chunk_idx, data_dict in enumerate(data_generator):
-            # Calculate slice indices
             chunk_len = len(data_dict['X'])
             end_idx = current_idx + chunk_len
             
-            # Write data for this chunk
-            for var_name, data_array in data_dict.items():
-                if var_name in nc_vars:
-                    nc_vars[var_name][current_idx:end_idx] = data_array
+            for var_name, nc_var in nc_vars.items():
+                if var_name in data_dict:
+                    nc_var[current_idx:end_idx] = data_dict[var_name]
             
             current_idx = end_idx
             if chunk_idx % 5 == 0:
