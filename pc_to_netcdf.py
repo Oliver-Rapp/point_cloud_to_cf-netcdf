@@ -1,5 +1,5 @@
 import os
-from lib.read_data import read_hyspex_stream, ply_to_df, las_to_df, get_cf_crs, list_variables_in_ply
+from lib.read_data import read_hyspex_stream, ply_to_df, las_to_df, get_cf_crs, list_variables_in_ply, list_variables_in_las
 from lib.create_netcdf import create_netcdf
 from lib.global_attributes import GlobalAttributes
 from lib.variable_mapping import VariableMapping
@@ -251,9 +251,15 @@ def main():
     if args.ply_filepath:
         logger.info("Checking what variables are in the PLY file")
         variable_names = list_variables_in_ply(args.ply_filepath)
-    # elif args.las_filepath:
-    #     logger.info("Checking what variables are in the LAS file")
-    #     variable_names = list_variables_in_las()
+    elif args.las_filepath:
+        logger.info("Checking what variables are in the LAS file")
+        variable_names = list_variables_in_las(args.las_filepath)
+
+
+    # Initialize variable_names if it wasn't set (safety catch)
+    if 'variable_names' not in locals():
+         logger.error("No input file (PLY or LAS) provided or logic failed.")
+         sys.exit(1)
 
     if args.hdr_filepath:
         variable_names = variable_names + ['intensity']

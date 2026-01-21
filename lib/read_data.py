@@ -100,6 +100,16 @@ def process_chunk(start, end, data_dict):
     chunk = {key: value[start:end] for key, value in data_dict.items()}
     return pd.DataFrame(chunk)
 
+
+def list_variables_in_las(las_filepath):
+    """
+    List dimension names available in a LAS/LAZ file.
+    """
+    with laspy.open(las_filepath) as f:
+        # Get dimension names (e.g., X, Y, Z, Intensity, etc.)
+        # dimension_names is a property of the point format
+        return list(f.header.point_format.dimension_names)
+
 def las_to_df(las_filepath, cf_crs, variable_mapping, xcoord=None, ycoord=None, zcoord=None):
     # Open the LAS file
     las = laspy.read(las_filepath)
