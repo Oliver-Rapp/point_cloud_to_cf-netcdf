@@ -1,4 +1,5 @@
 import os
+import laspy
 from lib.read_data import read_hyspex_stream, ply_to_df, las_to_df, get_cf_crs, list_variables_in_ply, list_variables_in_las
 from lib.create_netcdf import create_netcdf
 from lib.global_attributes import GlobalAttributes
@@ -227,6 +228,20 @@ def main():
     elif args.ply_filepath:
         logger.info("Trying to calculate a CF grid mapping from the PROJ.4 string in the PLY header comment")
         cf_crs, crs_errors, crs_warnings = get_cf_crs(ply_filepath=args.ply_filepath)
+    elif args.las_filepath:
+        logger.info("Trying to read CRS from LAS file VLRs")
+        try:
+            with laspy.open(args.las_filepath) as f:
+                crs = f.header.parse_crs()
+            if crs is not None:
+                cf_crs = crs.to_cf()
+                logger.info("CRS read successfully from LAS file")
+            else:
+                crs_warnings = ["No CRS found in LAS file VLRs. Provide -crs_config or -proj4str if coordinate transformation is needed."]
+                logger.warning(crs_warnings[0])
+        except Exception as e:
+            crs_warnings = [f"Could not parse CRS from LAS file: {e}"]
+            logger.warning(crs_warnings[0])
 
     # Determine the output filepath if not provided as an argument
     if args.output_filepath is None:
@@ -298,10 +313,11 @@ def main():
         
         # 3. Update Global Attributes with bounds from header
         ga = global_attributes.dict
-        ga['geospatial_lat_min'] = metadata['lat_min']
-        ga['geospatial_lat_max'] = metadata['lat_max']
-        ga['geospatial_lon_min'] = metadata['lon_min']
-        ga['geospatial_lon_max'] = metadata['lon_max']
+        if metadata['lat_min'] is not None:
+            ga['geospatial_lat_min'] = metadata['lat_min']
+            ga['geospatial_lat_max'] = metadata['lat_max']
+            ga['geospatial_lon_min'] = metadata['lon_min']
+            ga['geospatial_lon_max'] = metadata['lon_max']
         ga['geospatial_vertical_min'] = metadata['z_min']
         ga['geospatial_vertical_max'] = metadata['z_max']
         

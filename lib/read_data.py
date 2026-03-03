@@ -18,16 +18,7 @@ def combine_dataframes(dfs):
     '''
     Combining a list of dataframes with the same columns into one df
     '''
-    combined_df = pd.DataFrame()  # Start with an empty DataFrame
-
-    for chunk in dfs:
-        combined_df = pd.concat([combined_df, chunk], ignore_index=True)
-        # Clear the previous chunk from memory
-        del chunk
-        # Force garbage collection
-        gc.collect()
-
-    return combined_df
+    return pd.concat(dfs, ignore_index=True)
 
 def get_ply_comment(plyfile):
     """
@@ -375,21 +366,27 @@ def get_las_metadata(las_filepath, cf_crs):
         min_x, min_y, min_z = header.mins
         max_x, max_y, max_z = header.maxs
         
-        # Reproject corners to get Lat/Lon bounds for global attributes
-        # (Approximate but sufficient for metadata)
-        xs = [min_x, max_x, min_x, max_x]
-        ys = [min_y, min_y, max_y, max_y]
-        
-        lats, lons = utm_to_latlon(np.array(xs), np.array(ys), cf_crs)
-        
-        return {
+        result = {
             'num_points': count,
             'x_min': min_x, 'x_max': max_x,
             'y_min': min_y, 'y_max': max_y,
             'z_min': min_z, 'z_max': max_z,
-            'lat_min': np.min(lats), 'lat_max': np.max(lats),
-            'lon_min': np.min(lons), 'lon_max': np.max(lons)
+            'lat_min': None, 'lat_max': None,
+            'lon_min': None, 'lon_max': None,
         }
+
+        if cf_crs is not None:
+            # Reproject corners to get Lat/Lon bounds for global attributes
+            # (Approximate but sufficient for metadata)
+            xs = [min_x, max_x, min_x, max_x]
+            ys = [min_y, min_y, max_y, max_y]
+            lats, lons = utm_to_latlon(np.array(xs), np.array(ys), cf_crs)
+            result['lat_min'] = np.min(lats)
+            result['lat_max'] = np.max(lats)
+            result['lon_min'] = np.min(lons)
+            result['lon_max'] = np.max(lons)
+
+        return result
 
 def read_las_generator(las_filepath, cf_crs, variable_mapping, chunk_size=1_000_000):
     """
@@ -410,10 +407,11 @@ def read_las_generator(las_filepath, cf_crs, variable_mapping, chunk_size=1_000_
             data['Y'] = np.array(chunk.y)
             data['Z'] = np.array(chunk.z)
             
-            # 2. Convert to Lat/Lon
-            lat, lon = utm_to_latlon(data['X'], data['Y'], cf_crs)
-            data['latitude'] = lat
-            data['longitude'] = lon
+            # 2. Convert to Lat/Lon (only if CRS is available)
+            if cf_crs is not None:
+                lat, lon = utm_to_latlon(data['X'], data['Y'], cf_crs)
+                data['latitude'] = lat
+                data['longitude'] = lon
             
             # 3. Get other variables based on mapping
             for netcdf_var, details in variable_mapping.items():
