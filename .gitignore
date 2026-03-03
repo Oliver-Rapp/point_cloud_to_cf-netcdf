@@ -14,7 +14,8 @@ visualise_data*
 count_lines*
 *png
 *.sh
-
+test_data/
+project/
 
 # Ignore Python Environment
 .venv/
