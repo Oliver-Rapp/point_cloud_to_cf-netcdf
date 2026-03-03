@@ -16,3 +16,5 @@ count_lines*
 *.sh
 oliver_*
 output_*
+test_data/
+project/
