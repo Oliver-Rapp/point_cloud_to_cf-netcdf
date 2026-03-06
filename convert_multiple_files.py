@@ -28,7 +28,7 @@ def run_script(csv_file):
             global_attributes_json = json.dumps(global_attributes)
 
             # Add the global_attributes argument
-            args.append(f'--global_attributes={global_attributes_json}')
+            args.append(f'--user_global_attributes={global_attributes_json}')
 
             # Run the script with subprocess and pass the arguments
             subprocess.run(['python3', 'pc_to_netcdf.py'] + args)

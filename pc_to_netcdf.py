@@ -4,7 +4,7 @@ from lib.read_data import read_hyspex_stream, ply_to_df, las_to_df, get_cf_crs, 
 from lib.create_netcdf import create_netcdf
 from lib.global_attributes import GlobalAttributes
 from lib.variable_mapping import VariableMapping
-from lib.read_data import get_las_metadata, read_las_generator
+from lib.read_data import get_las_metadata, read_las_generator, compute_gps_time_reference
 from lib.create_netcdf import create_netcdf_stream
 from datetime import datetime, timezone 
 import argparse
@@ -327,22 +327,29 @@ def main():
             ga['date_created'] = now
             ga['history'] = f"{now}: Converted from LAS to NetCDF via streaming."
 
-        # 4. Create the Data Generator (Lazy Reader)
+        # 4. Compute GPS time reference (also validates Adjusted GPS Time encoding)
+        leap_seconds = variable_mapping.dict.get('epoch_time', {}).get('gps_leap_seconds', 18)
+        gps_time_0, time_units = compute_gps_time_reference(args.las_filepath, leap_seconds)
+        logger.info(f"GPS time reference: {time_units}")
+
+        # 5. Create the Data Generator (Lazy Reader)
         las_generator = read_las_generator(
             args.las_filepath,
             cf_crs,
             variable_mapping.dict,
-            chunk_size=1_000_000 # Adjust based on RAM
+            chunk_size=1_000_000, # Adjust based on RAM
+            gps_time_offset=gps_time_0
         )
-        
-        # 5. Stream Write to NetCDF
+
+        # 6. Stream Write to NetCDF
         create_netcdf_stream(
             metadata,
             las_generator,
             variable_mapping.dict,
             args.output_filepath,
             ga,
-            cf_crs
+            cf_crs,
+            time_units=time_units
         )
         
         logger.info("LAS Streaming conversion complete.")

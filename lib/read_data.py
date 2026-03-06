@@ -101,7 +101,38 @@ def list_variables_in_las(las_filepath):
         # dimension_names is a property of the point format
         return list(f.header.point_format.dimension_names)
 
-def las_to_df(las_filepath, cf_crs, variable_mapping, xcoord=None, ycoord=None, zcoord=None):
+def compute_gps_time_reference(las_filepath, leap_seconds=18):
+    """
+    Determine the GPS time reference for a LAS/LAZ file.
+
+    Returns (gps_time_0, units_str) where:
+      - gps_time_0 is the raw Adjusted GPS Time of the first point (float seconds)
+      - units_str is a CF-compliant units string, e.g. "seconds since 2024-05-01 12:00:00 UTC"
+
+    The reference datetime is derived by converting gps_time_0 to UTC:
+      UTC = GPS_epoch_1970_offset (1315964800) + gps_time_0 - leap_seconds
+
+    leap_seconds corrects for the fact that GPS time is an atomic scale with no leap
+    seconds, while UTC does. As of 2024 this is 18. Set via variable_mapping.yml.
+    """
+    from datetime import datetime, timedelta, timezone
+    with laspy.open(las_filepath) as f:
+        if not f.header.global_encoding.gps_time_type:
+            raise ValueError(
+                f"LAS file '{las_filepath}' uses GPS Week Time (global encoding bit 0 = 0). "
+                "Only Adjusted GPS Time (bit 0 = 1) is supported. "
+                "Re-export the file with Adjusted GPS Time enabled."
+            )
+        chunk = next(f.chunk_iterator(chunk_size=1000))
+        gps_time_0 = float(np.min(np.array(chunk.gps_time)))
+
+    unix_ref = gps_time_0 + 1315964800 - leap_seconds
+    ref_dt = datetime(1970, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=unix_ref)
+    units_str = f"seconds since {ref_dt.strftime('%Y-%m-%d %H:%M:%S')} UTC"
+    return gps_time_0, units_str
+
+
+def las_to_df(las_filepath, cf_crs, variable_mapping, xcoord=None, ycoord=None, zcoord=None, gps_time_offset=None):
     # Open the LAS file
     las = laspy.read(las_filepath)
     print(f'File {las_filepath} read in')
@@ -140,10 +171,19 @@ def las_to_df(las_filepath, cf_crs, variable_mapping, xcoord=None, ycoord=None, 
                 # NetCDF expects "seconds since 1970...", LAS provides "seconds since 1980..."
                 # We add the offset: 1 billion (LAS offset) + 315964800 (GPS-Unix offset)
                 if lower_name == 'gps_time':
-                    # Check global encoding bit 0 if strict, but standard practice is Adjusted GPS Time
-                    # Offset = 1315964800.0
-                    values = values + 1315964800.0
-                    print(f'  - Applied GPS-to-Unix time offset to {las_name}')
+                    if not las.header.global_encoding.gps_time_type:
+                        raise ValueError(
+                            f"LAS file '{las_filepath}' uses GPS Week Time (global encoding bit 0 = 0). "
+                            "Only Adjusted GPS Time (bit 0 = 1) is supported. "
+                            "Re-export the file with Adjusted GPS Time enabled."
+                        )
+                    if gps_time_offset is None:
+                        raise ValueError(
+                            "gps_time_offset must be provided to las_to_df() when the file contains GPS time. "
+                            "Call compute_gps_time_reference() first."
+                        )
+                    values = values - gps_time_offset
+                    print(f'  - Applied GPS time reference offset to {las_name}')
 
                 data_dict[name] = values
                 break # Found a match for this variable, stop checking possible names
@@ -388,7 +428,7 @@ def get_las_metadata(las_filepath, cf_crs):
 
         return result
 
-def read_las_generator(las_filepath, cf_crs, variable_mapping, chunk_size=1_000_000):
+def read_las_generator(las_filepath, cf_crs, variable_mapping, chunk_size=1_000_000, gps_time_offset=None):
     """
     Yields chunks of LAS data as dictionaries of NumPy arrays.
     Replaces las_to_df for memory efficiency.
@@ -425,9 +465,20 @@ def read_las_generator(las_filepath, cf_crs, variable_mapping, chunk_size=1_000_
                         if lower_name in las_dims:
                             val = np.array(chunk[las_dims[lower_name]])
                             
-                            # Handle Time Conversion (GPS -> Unix)
+                            # Handle Time Conversion (GPS -> relative seconds since survey start)
                             if lower_name == 'gps_time':
-                                val = val + 1315964800.0
+                                if not f.header.global_encoding.gps_time_type:
+                                    raise ValueError(
+                                        f"LAS file '{las_filepath}' uses GPS Week Time (global encoding bit 0 = 0). "
+                                        "Only Adjusted GPS Time (bit 0 = 1) is supported. "
+                                        "Re-export the file with Adjusted GPS Time enabled."
+                                    )
+                                if gps_time_offset is None:
+                                    raise ValueError(
+                                        "gps_time_offset must be provided to read_las_generator() when the file "
+                                        "contains GPS time. Call compute_gps_time_reference() first."
+                                    )
+                                val = val - gps_time_offset
                                 
                             data[netcdf_var] = val
                             break # Found match, move to next var

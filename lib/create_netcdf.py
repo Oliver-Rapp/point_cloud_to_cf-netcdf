@@ -62,7 +62,7 @@ class NetCDF:
             band_var.setncattr('coverage_content_type', 'coordinate')
             logger.info(f'Wrote coordinate variable for each wavelength band ({num_bands} total)')
 
-    def write_1d_data(self, pc_df, variable_mapping):
+    def write_1d_data(self, pc_df, variable_mapping, time_units=None):
 
         # Loop through columns in input data
         for col in pc_df.columns:
@@ -93,6 +93,9 @@ class NetCDF:
                                 cast_value = value
 
                             netcdf_variable.setncattr(attribute, cast_value)
+                        # Override time units with the dynamic per-file reference
+                        if variable == 'epoch_time' and time_units is not None:
+                            netcdf_variable.setncattr('units', time_units)
                         logger.info(f'Data and metadata written to {variable} variable')
 
     def write_2d_data(self, wavelength_source, variable_mapping, wavelengths=None):
@@ -170,7 +173,7 @@ class NetCDF:
 
 
 def create_netcdf(pc_df, wavelength_source, variable_mapping, output_filepath,
-                global_attributes, cf_crs, wavelengths=None):
+                global_attributes, cf_crs, wavelengths=None, time_units=None):
     """
     Create a CF-compliant NetCDF file.
 
@@ -181,6 +184,8 @@ def create_netcdf(pc_df, wavelength_source, variable_mapping, output_filepath,
     global_attributes : dict of global attributes.
     cf_crs : dict of CRS variable attributes.
     wavelengths : optional 1D array of wavelength centres (for band coordinate).
+    time_units : optional CF units string for the epoch_time variable, e.g.
+                 "seconds since 2024-05-01 12:00:00 UTC". Overrides the YAML default.
     """
     netcdf = NetCDF(output_filepath)
 
@@ -190,7 +195,7 @@ def create_netcdf(pc_df, wavelength_source, variable_mapping, output_filepath,
     if cf_crs:
         netcdf.define_grid_mapping(cf_crs)
 
-    netcdf.write_1d_data(pc_df, variable_mapping)
+    netcdf.write_1d_data(pc_df, variable_mapping, time_units=time_units)
 
     if wavelength_source is not None:
         netcdf.write_2d_data(wavelength_source, variable_mapping, wavelengths=wavelengths)
@@ -198,7 +203,7 @@ def create_netcdf(pc_df, wavelength_source, variable_mapping, output_filepath,
     netcdf.assign_global_attributes(global_attributes)
     netcdf.close()
 
-def create_netcdf_stream(metadata, data_generator, variable_mapping, output_filepath, global_attributes, cf_crs):
+def create_netcdf_stream(metadata, data_generator, variable_mapping, output_filepath, global_attributes, cf_crs, time_units=None):
     """
     Creates NetCDF by streaming data. 
     Only creates variables that actually exist in the input stream.
@@ -250,7 +255,10 @@ def create_netcdf_stream(metadata, data_generator, variable_mapping, output_file
             # Apply attributes
             for attr, val in attributes.items():
                 v.setncattr(attr, val)
-            
+            # Override time units with the dynamic per-file reference
+            if var_name == 'epoch_time' and time_units is not None:
+                v.setncattr('units', time_units)
+
             nc_vars[var_name] = v
 
         # 4. Write CRS
