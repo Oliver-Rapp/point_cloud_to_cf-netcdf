@@ -123,7 +123,7 @@ def compute_gps_time_reference(las_filepath, leap_seconds=18):
                 "Only Adjusted GPS Time (bit 0 = 1) is supported. "
                 "Re-export the file with Adjusted GPS Time enabled."
             )
-        chunk = next(f.chunk_iterator(chunk_size=1000))
+        chunk = next(f.chunk_iterator(1000))
         gps_time_0 = float(np.min(np.array(chunk.gps_time)))
 
     unix_ref = gps_time_0 + 1315964800 - leap_seconds
