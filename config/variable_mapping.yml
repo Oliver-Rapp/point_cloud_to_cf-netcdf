@@ -230,9 +230,13 @@ scan_angle_rank: # Name of variable to be used in NetCDF file
 
 epoch_time: # Name of variable to be used in NetCDF file
   dtype: 'f8'  # float64 preserves sub-second GPS precision; configurable here
-  gps_leap_seconds: 18  # GPS time has no leap seconds; UTC does. As of 2024 the offset is 18 s.
-                        # Update this if new leap seconds are added.
-                        # Current value: https://hpiers.obspm.fr/iers/bul/bulc/UTC-TAI.history
+  gps_leap_seconds: 18  # GPS counts no leap seconds; UTC does. This value is used to convert GPS→UTC.
+                        # Formula: gps_leap_seconds = (TAI − UTC) − 19
+                        #   The constant 19 is the TAI−UTC offset at the GPS epoch (1980-01-06).
+                        #   TAI−UTC is currently 37 s (last updated 2017-01-01).
+                        #   So: 37 − 19 = 18 s  ← current value.
+                        # If a new leap second is announced, increment TAI−UTC by 1 and recalculate.
+                        # TAI−UTC history: https://hpiers.obspm.fr/iers/bul/bulc/UTC-TAI.history
   possible_names: # Possible names of variable in PLY or LAS file
     - gps_time
     - time_stamp
