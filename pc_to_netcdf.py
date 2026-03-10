@@ -327,17 +327,39 @@ def main():
             ga['date_created'] = now
             ga['history'] = f"{now}: Converted from LAS to NetCDF via streaming."
 
+        # 3b. Validate global attributes (mirrors PLY path)
+        reformatting_errors, reformatting_warnings = global_attributes.reformat_attributes()
+        ga_errors, ga_warnings = global_attributes.check()
+
+        ga_all_errors = crs_errors + reformatting_errors + ga_errors
+        ga_all_warnings = crs_warnings + reformatting_warnings + ga_warnings
+
+        if ga_all_warnings:
+            logger.warning('\nWarnings\nWe recommend that these are fixed, but you can choose to ignore them:\n')
+            for warning in ga_all_warnings:
+                logger.warning(warning)
+        if ga_all_errors:
+            logger.error('\n\nThe following errors were found:\n')
+            for error in ga_all_errors:
+                logger.error(error)
+            logger.error('No NetCDF file has been created. Please correct the errors and try again.\n\n')
+            sys.exit(1)
+
         # 4. Compute GPS time reference (also validates Adjusted GPS Time encoding)
         leap_seconds = variable_mapping.dict.get('epoch_time', {}).get('gps_leap_seconds', 18)
         gps_time_0, time_units = compute_gps_time_reference(args.las_filepath, leap_seconds)
         logger.info(f"GPS time reference: {time_units}")
 
         # 5. Create the Data Generator (Lazy Reader)
+        # chunk_size controls how many points are held in RAM at once.
+        # Must match chunk_write_size passed to create_netcdf_stream so that
+        # each write aligns with netCDF4's internal storage chunks.
+        chunk_size = 250_000
         las_generator = read_las_generator(
             args.las_filepath,
             cf_crs,
             variable_mapping.dict,
-            chunk_size=1_000_000, # Adjust based on RAM
+            chunk_size=chunk_size,
             gps_time_offset=gps_time_0
         )
 
@@ -349,7 +371,8 @@ def main():
             args.output_filepath,
             ga,
             cf_crs,
-            time_units=time_units
+            time_units=time_units,
+            chunk_write_size=chunk_size,
         )
         
         logger.info("LAS Streaming conversion complete.")
