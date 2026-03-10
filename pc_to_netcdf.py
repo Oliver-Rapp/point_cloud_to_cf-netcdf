@@ -327,20 +327,20 @@ def main():
             ga['date_created'] = now
             ga['history'] = f"{now}: Converted from LAS to NetCDF via streaming."
 
-        # 3b. Validate global attributes (mirrors PLY path)
+        # 3b. Validate global attributes and variable mapping (mirrors PLY path)
         reformatting_errors, reformatting_warnings = global_attributes.reformat_attributes()
         ga_errors, ga_warnings = global_attributes.check()
 
-        ga_all_errors = crs_errors + reformatting_errors + ga_errors
-        ga_all_warnings = crs_warnings + reformatting_warnings + ga_warnings
+        all_errors = crs_errors + vm_errors + reformatting_errors + ga_errors
+        all_warnings = crs_warnings + vm_warnings + reformatting_warnings + ga_warnings
 
-        if ga_all_warnings:
+        if all_warnings:
             logger.warning('\nWarnings\nWe recommend that these are fixed, but you can choose to ignore them:\n')
-            for warning in ga_all_warnings:
+            for warning in all_warnings:
                 logger.warning(warning)
-        if ga_all_errors:
+        if all_errors:
             logger.error('\n\nThe following errors were found:\n')
-            for error in ga_all_errors:
+            for error in all_errors:
                 logger.error(error)
             logger.error('No NetCDF file has been created. Please correct the errors and try again.\n\n')
             sys.exit(1)
