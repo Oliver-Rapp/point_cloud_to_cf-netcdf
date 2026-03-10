@@ -76,12 +76,11 @@ def get_cf_crs(ply_filepath=None, proj4str=None):
     return cf_crs, errors, warnings
 
 
-def utm_to_latlon(x, y, cf_crs):
+def utm_to_latlon(x, y, cf_crs, transformer=None):
 
-    crs = CRS.from_cf(cf_crs)
-
-    # Create a Transformer object for UTM to WGS84 conversion
-    transformer = Transformer.from_crs(crs, CRS.from_epsg(4326), always_xy=True)
+    if transformer is None:
+        crs = CRS.from_cf(cf_crs)
+        transformer = Transformer.from_crs(crs, CRS.from_epsg(4326), always_xy=True)
 
     # Convert UTM (x, y) arrays to lat/lon arrays
     lon, lat = transformer.transform(x, y)
@@ -433,23 +432,29 @@ def read_las_generator(las_filepath, cf_crs, variable_mapping, chunk_size=1_000_
     Yields chunks of LAS data as dictionaries of NumPy arrays.
     Replaces las_to_df for memory efficiency.
     """
+    # Build the CRS transformer once so it isn't reconstructed for every chunk.
+    transformer = None
+    if cf_crs is not None:
+        _crs = CRS.from_cf(cf_crs)
+        transformer = Transformer.from_crs(_crs, CRS.from_epsg(4326), always_xy=True)
+
     with laspy.open(las_filepath) as f:
         # Create a lookup for dimension names (normalize to lowercase)
         las_dims = {d.lower(): d for d in list(f.header.point_format.dimension_names)}
-        
+
         # Iterate over the file in chunks
         for chunk in f.chunk_iterator(chunk_size):
             data = {}
-            
+
             # 1. Get Coordinates (Always needed)
             # laspy applies scale/offset automatically
             data['X'] = np.array(chunk.x)
             data['Y'] = np.array(chunk.y)
             data['Z'] = np.array(chunk.z)
-            
+
             # 2. Convert to Lat/Lon (only if CRS is available)
-            if cf_crs is not None:
-                lat, lon = utm_to_latlon(data['X'], data['Y'], cf_crs)
+            if transformer is not None:
+                lat, lon = utm_to_latlon(data['X'], data['Y'], cf_crs, transformer=transformer)
                 data['latitude'] = lat
                 data['longitude'] = lon
             
