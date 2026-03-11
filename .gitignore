@@ -1,3 +1,4 @@
+local/
 tests/data/2020*
 test.csv
 *__pycache__*
@@ -18,3 +19,4 @@ oliver_*
 output_*
 test_data/
 project/
+config/config_bulk_conversion_2025.csv

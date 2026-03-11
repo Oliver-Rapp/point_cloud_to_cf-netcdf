@@ -203,17 +203,22 @@ def create_netcdf(pc_df, wavelength_source, variable_mapping, output_filepath,
     netcdf.assign_global_attributes(global_attributes)
     netcdf.close()
 
-def create_netcdf_stream(metadata, data_generator, variable_mapping, output_filepath, global_attributes, cf_crs, time_units=None):
+def create_netcdf_stream(metadata, data_generator, variable_mapping, output_filepath, global_attributes, cf_crs, time_units=None, chunk_write_size=250_000):
     """
-    Creates NetCDF by streaming data. 
+    Creates NetCDF by streaming data.
     Only creates variables that actually exist in the input stream.
+
+    chunk_write_size controls the NetCDF4 internal storage chunk size (chunksizes parameter).
+    It must match or be smaller than the data generator's chunk_size so that each write
+    aligns to at most a few NetCDF chunks — avoiding the default behaviour where a fixed
+    dimension causes netCDF4 to buffer the entire variable in memory on every slice write.
     """
     import numpy as np
     import netCDF4 as nc
 
     # Initialize Dataset
     with nc.Dataset(output_filepath, mode='w', format='NETCDF4') as ncfile:
-        
+
         # 1. Dimensions
         num_points = metadata['num_points']
         ncfile.createDimension('point', size=num_points)
@@ -227,13 +232,14 @@ def create_netcdf_stream(metadata, data_generator, variable_mapping, output_file
 
         # 3. Create Variables
         nc_vars = {}
-        
-        # Define mandatory coordinates
+
+        # Only create variables that are actually present in the data.
+        # Coordinate variables (X/Y/Z/lat/lon/altitude) are included only if the
+        # generator produced them — which depends on the variable_mapping config.
+        # This avoids writing empty/zero-filled variables for coords that were
+        # intentionally excluded (e.g. lat/lon when only projected coords are wanted).
         coords = ['latitude', 'longitude', 'altitude', 'X', 'Y', 'Z']
-        
-        # Combine coordinates with dynamic variables that exist in the first chunk
-        # This filters out variables defined in YAML but missing in LAS
-        vars_to_create = set(coords)
+        vars_to_create = {c for c in coords if c in first_chunk}
         for var_name in variable_mapping.keys():
             if var_name in first_chunk:
                 vars_to_create.add(var_name)
@@ -249,8 +255,10 @@ def create_netcdf_stream(metadata, data_generator, variable_mapping, output_file
                 dtype = 'f8'
                 attributes = {}
 
-            # Create variable
-            v = ncfile.createVariable(var_name, dtype, ('point',), zlib=True, complevel=4)
+            # Create variable with explicit chunksizes so netCDF4 never has to buffer
+            # the full dimension in memory when writing partial slices.
+            v = ncfile.createVariable(var_name, dtype, ('point',), zlib=True, complevel=1,
+                                      chunksizes=(chunk_write_size,))
             
             # Apply attributes
             for attr, val in attributes.items():
@@ -284,19 +292,21 @@ def create_netcdf_stream(metadata, data_generator, variable_mapping, output_file
                 nc_var[current_idx:end_idx] = first_chunk[var_name]
         
         current_idx = end_idx
+        ncfile.sync()
         print(f"  Processed {current_idx} / {num_points} points...")
 
         # 7. Write the REST of the stream
         for chunk_idx, data_dict in enumerate(data_generator):
             chunk_len = len(data_dict['X'])
             end_idx = current_idx + chunk_len
-            
+
             for var_name, nc_var in nc_vars.items():
                 if var_name in data_dict:
                     nc_var[current_idx:end_idx] = data_dict[var_name]
-            
+
             current_idx = end_idx
-            if chunk_idx % 5 == 0:
+            if chunk_idx % 10 == 0:
+                ncfile.sync()  # flush compressed buffers to disk, freeing RAM
                 print(f"  Processed {current_idx} / {num_points} points...")
 
     print(f"Finished writing {output_filepath}")

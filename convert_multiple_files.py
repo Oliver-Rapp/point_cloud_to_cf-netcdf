@@ -7,7 +7,7 @@ def run_script(csv_file):
     # Define the known argument names for the command
     known_args = [
         'ply_filepath', 'las_filepath', 'hdr_filepath', 'xcoord', 'ycoord', 'zcoord',
-        'crs_config', 'output_filepath'
+        'crs_config', 'proj4str', 'variable_mapping', 'output_filepath'
     ]
 
     with open(csv_file, mode='r') as file:

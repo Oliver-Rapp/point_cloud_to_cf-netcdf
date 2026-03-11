@@ -432,9 +432,12 @@ def read_las_generator(las_filepath, cf_crs, variable_mapping, chunk_size=1_000_
     Yields chunks of LAS data as dictionaries of NumPy arrays.
     Replaces las_to_df for memory efficiency.
     """
-    # Build the CRS transformer once so it isn't reconstructed for every chunk.
+    # Build the CRS transformer once — only when lat/lon are actually requested
+    # in the variable mapping. If the mapping contains only projected coords (X/Y/Z),
+    # reprojection is skipped entirely, avoiding redundant data and computation.
+    _needs_latlon = 'latitude' in variable_mapping or 'longitude' in variable_mapping
     transformer = None
-    if cf_crs is not None:
+    if cf_crs is not None and _needs_latlon:
         _crs = CRS.from_cf(cf_crs)
         transformer = Transformer.from_crs(_crs, CRS.from_epsg(4326), always_xy=True)
 
@@ -452,12 +455,12 @@ def read_las_generator(las_filepath, cf_crs, variable_mapping, chunk_size=1_000_
             data['Y'] = np.array(chunk.y)
             data['Z'] = np.array(chunk.z)
 
-            # 2. Convert to Lat/Lon (only if CRS is available)
+            # 2. Convert to Lat/Lon (only if CRS is available and requested)
             if transformer is not None:
                 lat, lon = utm_to_latlon(data['X'], data['Y'], cf_crs, transformer=transformer)
                 data['latitude'] = lat
                 data['longitude'] = lon
-            
+
             # 3. Get other variables based on mapping
             for netcdf_var, details in variable_mapping.items():
                 # Skip coords we already handled
@@ -488,8 +491,9 @@ def read_las_generator(las_filepath, cf_crs, variable_mapping, chunk_size=1_000_
                             data[netcdf_var] = val
                             break # Found match, move to next var
 
-            # 4. Handle Altitude alias if not present
-            if 'altitude' not in data:
+            # 4. Handle Altitude alias: only copy Z→altitude when altitude is in the mapping
+            # and wasn't matched directly from a LAS dimension name.
+            if 'altitude' in variable_mapping and 'altitude' not in data:
                 data['altitude'] = data['Z']
 
             yield data
