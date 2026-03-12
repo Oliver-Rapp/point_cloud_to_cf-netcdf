@@ -16,6 +16,8 @@ count_lines*
 *.sh
 test_data/
 project/
+local/
+
 
 # Ignore Python Environment
 .venv/
