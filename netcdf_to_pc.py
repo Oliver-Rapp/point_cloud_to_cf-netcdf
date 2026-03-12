@@ -97,8 +97,16 @@ def get_metadata_safely(ds, config, source_filename):
     # 1. Try to get WKT from the 'crs' variable (Standard CF-NetCDF)
     if 'crs' in ds and 'crs_wkt' in ds['crs'].attrs:
         crs_string = ds['crs'].attrs['crs_wkt']
-    
-    # 2. Fallback to global 'datum' attribute (PROJ string)
+
+    # 2. Reconstruct WKT from CF grid mapping attributes (e.g. when CRS came from a YAML config)
+    if crs_string is None and 'crs' in ds and 'grid_mapping_name' in ds['crs'].attrs:
+        try:
+            cf_params = {str(k): v for k, v in ds['crs'].attrs.items()}
+            crs_string = pyproj.CRS.from_cf(cf_params).to_wkt()
+        except Exception:
+            pass
+
+    # 3. Fallback to global 'datum' attribute (PROJ string)
     if crs_string is None and 'datum' in ds.attrs:
         crs_string = ds.attrs['datum']
 

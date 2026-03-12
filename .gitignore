@@ -20,6 +20,7 @@ output_*
 test_data/
 project/
 config/config_bulk_conversion_2025.csv
+tests/
 
 # Python environment
 .venv/
@@ -34,3 +35,6 @@ __pycache__/
 *.ply
 *.las
 *.laz
+tests/compare_round_trip.py
+tests/crop_test_data.py
+tests/test_report.md

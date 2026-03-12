@@ -7,6 +7,7 @@ Usage:
 Outputs:
     /home/oliver/Documents/MET/Test_Point_Clouds/DJI_sample_100k.las
     /home/oliver/Documents/MET/Test_Point_Clouds/VNIR_sample_100k.ply
+    /home/oliver/Documents/MET/Test_Point_Clouds/Filchner_sample_100k.las
 """
 
 import laspy
@@ -112,7 +113,35 @@ def crop_ply():
                 break
 
 
+def crop_filchner():
+    """Crop FilchnerFonna COPC LAZ to 100k LAS, dropping only the COPC spatial-index VLR."""
+    src = f"{DATA_DIR}/FilchnerRevisitTS3_Bonus.copc.laz"
+    dst = f"{DATA_DIR}/Filchner_sample_100k.las"
+
+    print(f"Cropping LAZ: {src}")
+    with laspy.open(src) as f:
+        chunk = next(f.chunk_iterator(N))
+        header = laspy.LasHeader(
+            point_format=f.header.point_format,
+            version=f.header.version
+        )
+        header.offsets = f.header.offsets
+        header.scales = f.header.scales
+        header.global_encoding = f.header.global_encoding  # preserves GPS time type flag
+        for vlr in f.header.vlrs:
+            if vlr.user_id.strip('\x00') != 'copc':  # skip COPC spatial-index VLR
+                header.vlrs.append(vlr)
+        with open(dst, 'wb') as out:
+            with laspy.LasWriter(out, header=header) as w:
+                w.write_points(chunk)
+
+    check = laspy.read(dst)
+    print(f"  Written {len(check.points)} points to {dst}")
+    print(f"  global_encoding={check.header.global_encoding.value} (bit 0={check.header.global_encoding.value & 1})")
+
+
 if __name__ == "__main__":
     crop_las()
     crop_ply()
+    crop_filchner()
     print("\nDone.")

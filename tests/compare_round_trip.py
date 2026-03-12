@@ -28,10 +28,12 @@ DATA_DIR   = "/home/oliver/Documents/MET/Test_Point_Clouds"
 OUT_DIR    = os.path.join(REPO_ROOT, "output", "test_round_trip")
 REPORT_OUT = os.path.join(REPO_ROOT, "tests", "test_report.md")
 
-LAS_SRC  = f"{DATA_DIR}/DJI_sample_100k.las"
-PLY_SRC  = f"{DATA_DIR}/VNIR_sample_100k.ply"
-ATTRS_LAS = os.path.join(REPO_ROOT, "tests", "test_attrs_las.yml")
-ATTRS_PLY = os.path.join(REPO_ROOT, "tests", "test_attrs_ply.yml")
+LAS_SRC      = f"{DATA_DIR}/DJI_sample_100k.las"
+PLY_SRC      = f"{DATA_DIR}/VNIR_sample_100k.ply"
+LAS14_SRC    = f"{DATA_DIR}/Filchner_sample_100k.las"
+ATTRS_LAS    = os.path.join(REPO_ROOT, "tests", "test_attrs_las.yml")
+ATTRS_PLY    = os.path.join(REPO_ROOT, "tests", "test_attrs_ply.yml")
+ATTRS_LAS14  = os.path.join(REPO_ROOT, "tests", "test_attrs_filchner.yml")
 VM        = os.path.join(REPO_ROOT, "config", "variable_mapping.yml")
 CRS_YAML  = os.path.join(REPO_ROOT, "config", "cf_crs.yml")
 PROJ4_33N = "+proj=utm +zone=33 +north +ellps=WGS84 +datum=WGS84 +units=m +no_defs"
@@ -115,6 +117,14 @@ def forward_conversions():
         "-o", netcdf_path("T5_ply_crs_from_yaml"),
     ], "T5")
 
+    # T10: LAS 1.4 → NC (CRS from YAML) — tests native scan_angle (int16, 0.006°/unit)
+    ok['T10'] = run_cmd([
+        py, "pc_to_netcdf.py",
+        "-las", LAS14_SRC, "-uga", ATTRS_LAS14, "-vm", VM,
+        "-crs", CRS_YAML,
+        "-o", netcdf_path("T10_las14_crs_from_yaml"),
+    ], "T10")
+
     return ok
 
 
@@ -160,6 +170,15 @@ def reverse_conversions(fwd_ok):
             "--format", "las",
             "--output", out_path("T9_ply_to_las", "las"),
         ], "T9")
+
+    # T11: NC → LAS round-trip (T10 source, LAS 1.4) — expects exact scan_angle
+    if fwd_ok.get('T10'):
+        ok['T11'] = run_cmd([
+            py, "netcdf_to_pc.py",
+            netcdf_path("T10_las14_crs_from_yaml"),
+            "--format", "las",
+            "--output", out_path("T11_las14_roundtrip", "las"),
+        ], "T11")
 
     return ok
 
@@ -490,6 +509,78 @@ def _check_t9_xyz():
         record(test_id, "CRS in output LAS", False, str(e))
 
 
+def check_las14_roundtrip():
+    """T11: LAS 1.4 → NC → LAS 1.4. scan_angle (int16) should round-trip exactly."""
+    test_id = 'T11'
+    rt_las = out_path("T11_las14_roundtrip", "las")
+    if not os.path.exists(rt_las):
+        record(test_id, "output exists", False, "file not found")
+        return
+    record(test_id, "output exists", True)
+
+    orig = laspy.read(LAS14_SRC)
+    rt   = laspy.read(rt_las)
+
+    n_orig = len(orig.points)
+    n_rt   = len(rt.points)
+    record(test_id, "point count", n_orig == n_rt, f"{n_rt} (expected {n_orig})")
+
+    orig_scale = float(orig.header.scales[0])
+    rt_scale   = float(rt.header.scales[0])
+    tol = max(orig_scale, rt_scale) * 2
+    for ax in ('x', 'y', 'z'):
+        o = np.array(getattr(orig, ax))
+        r = np.array(getattr(rt, ax))
+        if len(r) != len(o):
+            record(test_id, f"{ax} accuracy", False, "point count mismatch, skipping")
+            continue
+        err = np.max(np.abs(o - r))
+        record(test_id, f"{ax} accuracy", err <= tol,
+               f"max_err={err:.6f} m (orig_scale={orig_scale} m, rt_scale={rt_scale} m)")
+
+    if len(orig.points) != len(rt.points):
+        return
+
+    # GPS time
+    try:
+        o_gps = np.array(orig.gps_time)
+        r_gps = np.array(rt.gps_time)
+        err = np.max(np.abs(o_gps - r_gps))
+        record(test_id, "gps_time round-trip", err == 0.0, f"max_err={err:.6f} s")
+    except Exception as e:
+        record(test_id, "gps_time round-trip", False, str(e))
+
+    # scan_angle — source is LAS 1.4 int16 (0.006°/unit); NetCDF stores as float32 degrees.
+    # Round-trip: orig_int16 × 0.006 → float32 → ÷0.006 → round → int16.
+    # Max error is half a step (0.003°) due to float32 precision at scan angle magnitudes.
+    try:
+        o_sa = np.array(orig.scan_angle).astype(np.float64) * 0.006
+        r_sa = np.array(rt.scan_angle).astype(np.float64) * 0.006
+        err = float(np.max(np.abs(o_sa - r_sa)))
+        record(test_id, "scan_angle round-trip", err <= 0.004,
+               f"max_err={err:.4f} deg (tol=0.004 deg)")
+    except Exception as e:
+        record(test_id, "scan_angle round-trip", False, str(e))
+
+    # RGB colors
+    for ch in ('red', 'green', 'blue'):
+        try:
+            o = np.array(getattr(orig, ch))
+            r = np.array(getattr(rt, ch))
+            diff = int(np.max(np.abs(o.astype(np.int32) - r.astype(np.int32))))
+            record(test_id, f"{ch} round-trip", diff == 0, f"max_diff={diff}")
+        except Exception as e:
+            record(test_id, f"{ch} round-trip", False, str(e))
+
+    # CRS in output
+    try:
+        with laspy.open(rt_las) as f:
+            crs = f.header.parse_crs()
+        record(test_id, "CRS in output LAS", crs is not None, str(crs.to_epsg()) if crs else "None")
+    except Exception as e:
+        record(test_id, "CRS in output LAS", False, str(e))
+
+
 def check_crs_method_consistency():
     """Compare lat/lon from T1 (VLR), T2 (YAML), T3 (proj4) — all should be identical."""
     test_id = "CRS_CONSISTENCY"
@@ -538,8 +629,9 @@ def generate_report(fwd_ok, rev_ok):
         "",
         f"| File | Points | Format |",
         f"|---|---|---|",
-        f"| `DJI_sample_100k.las` | 100,000 | LAS 1.4, DJI Zenmuse L1, UTM 33N, has RGB + GPS time |",
+        f"| `DJI_sample_100k.las` | 100,000 | LAS 1.2 PF3, DJI Zenmuse L1, UTM 33N, has RGB + GPS time |",
         f"| `VNIR_sample_100k.ply` | 100,000 | PLY binary_little_endian, HySpex VNIR 1800, UTM 33N, has normals/view vectors/pixel coords/epoch |",
+        f"| `Filchner_sample_100k.las` | 100,000 | LAS 1.4 PF7, FilchnerFonna Svalbard, UTM 33N, has RGB + GPS time + native scan_angle (int16) |",
         "",
         "---",
         "",
@@ -559,14 +651,16 @@ def generate_report(fwd_ok, rev_ok):
         'T7': "NC → PLY cross-format (LAS → PLY)",
         'T8': "NC → PLY round-trip (T4 source)",
         'T9': "NC → LAS cross-format (PLY → LAS)",
+        'T10': "LAS 1.4 → NC (CRS from YAML)",
+        'T11': "NC → LAS 1.4 round-trip (T10 source, exact scan_angle)",
         'CRS_CONSISTENCY': "CRS method consistency (T1 vs T2 vs T3)",
     }
 
-    all_test_ids = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'CRS_CONSISTENCY']
+    all_test_ids = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'CRS_CONSISTENCY']
 
     for tid in all_test_ids:
         desc = descriptions.get(tid, tid)
-        direction = "forward" if tid in ('T1','T2','T3','T4','T5') else "reverse" if tid.startswith('T') else "check"
+        direction = "forward" if tid in ('T1','T2','T3','T4','T5','T10') else "reverse" if tid.startswith('T') else "check"
 
         if tid in all_errors:
             status = "❌ CONVERSION FAILED"
@@ -607,8 +701,7 @@ def generate_report(fwd_ok, rev_ok):
         "| Limitation | Impact |",
         "|---|---|",
         "| Only UTM zone 33N data | Cannot test CRS reprojection for other zones/datums |",
-        "| Only 2 sensor types (DJI L1 + HySpex VNIR) | No variety in LAS point formats or GPS time encoding |",
-        "| No GPS Week Time file | Cannot test GPS Week Time rejection error |",
+        "| 3 sensor types (DJI L1, FilchnerFonna LiDAR, HySpex VNIR) | No variety in GPS time encoding; no GPS Week Time file |",
         "| No PLY with pre-existing lat/lon columns | Cannot test that code path (known NameError bug) |",
         "| HySpex hyperspectral intensity | 2D intensity not recoverable by design; tested that other variables are unaffected |",
         "| No bad/malformed inputs | No negative testing |",
@@ -658,6 +751,12 @@ if __name__ == "__main__":
                 tid, nc_file, ply_expected_vars, svalbard_lat, svalbard_lon
             )
 
+    if fwd_ok.get('T10'):
+        check_netcdf_intermediate(
+            'T10', netcdf_path("T10_las14_crs_from_yaml"),
+            las_expected_vars, svalbard_lat, svalbard_lon
+        )
+
     # 3. CRS consistency
     print("\n--- CRS method consistency ---")
     check_crs_method_consistency()
@@ -682,6 +781,9 @@ if __name__ == "__main__":
     if rev_ok.get('T9'):
         # T9 is PLY → NC → LAS: compare X/Y/Z of LAS output against PLY source
         _check_t9_xyz()
+
+    if rev_ok.get('T11'):
+        check_las14_roundtrip()
 
     # 6. Generate report
     generate_report(fwd_ok, rev_ok)

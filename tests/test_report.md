@@ -1,6 +1,6 @@
 # Round-trip test report
 
-**Date:** 2026-03-12T15:07:52Z  
+**Date:** 2026-03-12T15:59:59Z  
 **Branch:** integration/round-trip-test  
 
 ---
@@ -9,8 +9,9 @@
 
 | File | Points | Format |
 |---|---|---|
-| `DJI_sample_100k.las` | 100,000 | LAS 1.4, DJI Zenmuse L1, UTM 33N, has RGB + GPS time |
+| `DJI_sample_100k.las` | 100,000 | LAS 1.2 PF3, DJI Zenmuse L1, UTM 33N, has RGB + GPS time |
 | `VNIR_sample_100k.ply` | 100,000 | PLY binary_little_endian, HySpex VNIR 1800, UTM 33N, has normals/view vectors/pixel coords/epoch |
+| `Filchner_sample_100k.las` | 100,000 | LAS 1.4 PF7, FilchnerFonna Svalbard, UTM 33N, has RGB + GPS time + native scan_angle (int16) |
 
 ---
 
@@ -27,6 +28,8 @@
 | T7 | NC → PLY cross-format (LAS → PLY) | reverse | ✅ PASS |
 | T8 | NC → PLY round-trip (T4 source) | reverse | ✅ PASS |
 | T9 | NC → LAS cross-format (PLY → LAS) | reverse | ✅ PASS |
+| T10 | LAS 1.4 → NC (CRS from YAML) | forward | ✅ PASS |
+| T11 | NC → LAS 1.4 round-trip (T10 source, exact scan_angle) | reverse | ✅ PASS |
 | CRS_CONSISTENCY | CRS method consistency (T1 vs T2 vs T3) | check | ✅ PASS |
 
 ---
@@ -179,9 +182,9 @@
 |---|---|---|
 | output exists | ✅ |  |
 | point count | ✅ | 100000 (expected 100000) |
-| x accuracy | ✅ | max_err=0.000500 m (orig_scale=0.0001 m, rt_scale=0.001 m) |
-| y accuracy | ✅ | max_err=0.000500 m (orig_scale=0.0001 m, rt_scale=0.001 m) |
-| z accuracy | ✅ | max_err=0.000517 m (orig_scale=0.0001 m, rt_scale=0.001 m) |
+| x accuracy | ✅ | max_err=0.000000 m (orig_scale=0.0001 m, rt_scale=0.0001 m) |
+| y accuracy | ✅ | max_err=0.000000 m (orig_scale=0.0001 m, rt_scale=0.0001 m) |
+| z accuracy | ✅ | max_err=0.000000 m (orig_scale=0.0001 m, rt_scale=0.0001 m) |
 | red round-trip | ✅ | max_diff=0 |
 | green round-trip | ✅ | max_diff=0 |
 | blue round-trip | ✅ | max_diff=0 |
@@ -197,8 +200,8 @@
 | point count | ✅ | 100000 (expected 100000) |
 | x accuracy (LAS→PLY) | ✅ | max_err=0.000000 m (tol=0.01 m) |
 | y accuracy (LAS→PLY) | ✅ | max_err=0.000000 m (tol=0.01 m) |
-| z accuracy (LAS→PLY) | ✅ | max_err=0.000031 m (tol=0.01 m) |
-| utm_crs comment in PLY | ✅ | processing_time_epoch=1773328070.291628; utm_crs=PRO... |
+| z accuracy (LAS→PLY) | ✅ | max_err=0.000000 m (tol=0.01 m) |
+| utm_crs comment in PLY | ✅ | processing_time_epoch=1773331196.758800; utm_crs=PRO... |
 
 ### T8: NC → PLY round-trip (T4 source)
 
@@ -208,7 +211,7 @@
 | point count | ✅ | 100000 (expected 100000) |
 | x accuracy | ✅ | max_err=0.00000000 m (tol=0.01 m) |
 | y accuracy | ✅ | max_err=0.00000000 m (tol=0.01 m) |
-| z accuracy | ✅ | max_err=0.00000191 m (tol=0.01 m) |
+| z accuracy | ✅ | max_err=0.00000000 m (tol=0.01 m) |
 | red round-trip | ✅ | max_diff=0 |
 | green round-trip | ✅ | max_diff=0 |
 | blue round-trip | ✅ | max_diff=0 |
@@ -222,7 +225,7 @@
 | px round-trip | ✅ | max_diff=0 |
 | py round-trip | ✅ | max_diff=0 |
 | epoch time round-trip | ✅ | max_err=0.000000 s |
-| utm_crs comment in PLY | ✅ | processing_time_epoch=1773328071.140297; utm_crs=PRO... |
+| utm_crs comment in PLY | ✅ | processing_time_epoch=1773331197.546582; utm_crs=PRO... |
 
 ### T9: NC → LAS cross-format (PLY → LAS)
 
@@ -230,10 +233,52 @@
 |---|---|---|
 | output exists | ✅ |  |
 | point count | ✅ | 100000 (expected 100000) |
-| x accuracy (PLY→LAS) | ✅ | max_err=0.000500 m (tol=0.01 m) |
-| y accuracy (PLY→LAS) | ✅ | max_err=0.000500 m (tol=0.01 m) |
-| z accuracy (PLY→LAS) | ✅ | max_err=0.000502 m (tol=0.01 m) |
+| x accuracy (PLY→LAS) | ✅ | max_err=0.000050 m (tol=0.01 m) |
+| y accuracy (PLY→LAS) | ✅ | max_err=0.000050 m (tol=0.01 m) |
+| z accuracy (PLY→LAS) | ✅ | max_err=0.000050 m (tol=0.01 m) |
 | CRS in output LAS | ✅ | 32633 |
+
+### T10: LAS 1.4 → NC (CRS from YAML)
+
+| Check | Result | Detail |
+|---|---|---|
+| NetCDF exists | ✅ |  |
+| var:X present | ✅ |  |
+| var:Y present | ✅ |  |
+| var:Z present | ✅ |  |
+| var:latitude present | ✅ |  |
+| var:longitude present | ✅ |  |
+| var:altitude present | ✅ |  |
+| var:red present | ✅ |  |
+| var:green present | ✅ |  |
+| var:blue present | ✅ |  |
+| var:epoch_time present | ✅ |  |
+| var:scan_angle_rank present | ✅ |  |
+| crs variable present | ✅ |  |
+| crs:grid_mapping_name set | ✅ | transverse_mercator |
+| lat range valid | ✅ | min=78.6142 max=78.6229 expected [76.0,82.0] |
+| lon range valid | ✅ | min=17.9038 max=17.9150 expected [13.0,22.0] |
+| attr:title | ✅ |  |
+| attr:Conventions | ✅ |  |
+| attr:featureType | ✅ |  |
+| attr:geospatial_lat_min | ✅ |  |
+| Conventions=CF-1.8,ACDD-1.3 | ✅ | CF-1.8, ACDD-1.3 |
+
+### T11: NC → LAS 1.4 round-trip (T10 source, exact scan_angle)
+
+| Check | Result | Detail |
+|---|---|---|
+| output exists | ✅ |  |
+| point count | ✅ | 100000 (expected 100000) |
+| x accuracy | ✅ | max_err=0.000000 m (orig_scale=0.0001 m, rt_scale=0.0001 m) |
+| y accuracy | ✅ | max_err=0.000000 m (orig_scale=0.0001 m, rt_scale=0.0001 m) |
+| z accuracy | ✅ | max_err=0.000000 m (orig_scale=0.0001 m, rt_scale=0.0001 m) |
+| gps_time round-trip | ✅ | max_err=0.000000 s |
+| scan_angle round-trip | ✅ | max_err=0.0000 deg (tol=0.004 deg) |
+| red round-trip | ✅ | max_diff=0 |
+| green round-trip | ✅ | max_diff=0 |
+| blue round-trip | ✅ | max_diff=0 |
+| CRS in output LAS | ✅ | None |
 
 ### CRS_CONSISTENCY: CRS method consistency (T1 vs T2 vs T3)
 
@@ -250,8 +295,7 @@
 | Limitation | Impact |
 |---|---|
 | Only UTM zone 33N data | Cannot test CRS reprojection for other zones/datums |
-| Only 2 sensor types (DJI L1 + HySpex VNIR) | No variety in LAS point formats or GPS time encoding |
-| No GPS Week Time file | Cannot test GPS Week Time rejection error |
+| 3 sensor types (DJI L1, FilchnerFonna LiDAR, HySpex VNIR) | No variety in GPS time encoding; no GPS Week Time file |
 | No PLY with pre-existing lat/lon columns | Cannot test that code path (known NameError bug) |
 | HySpex hyperspectral intensity | 2D intensity not recoverable by design; tested that other variables are unaffected |
 | No bad/malformed inputs | No negative testing |

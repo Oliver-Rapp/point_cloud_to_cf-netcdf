@@ -73,7 +73,7 @@ Y: # Name of variable to be used in NetCDF file
     coverage_content_type: 'physicalMeasurement'
 
 Z: # Name of variable to be used in NetCDF file
-  dtype: 'f4'
+  dtype: 'f8'
   possible_names: # Possible names of variable in PLY or LAS file
     - Z
   attributes: # Variable attributes to be written to NetCDF file for the variable
@@ -216,7 +216,7 @@ py: # Name of variable to be used in NetCDF file
     coordinates: 'epoch_time latitude longitude Z'
 
 scan_angle_rank: # Name of variable to be used in NetCDF file
-  dtype: 'i4'
+  dtype: 'f4'
   possible_names: # Possible names of variable in PLY or LAS file
     - scan_angle_rank
     - scan_angle

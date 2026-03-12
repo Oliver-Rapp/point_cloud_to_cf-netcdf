@@ -192,6 +192,13 @@ def las_to_df(las_filepath, cf_crs, variable_mapping, xcoord=None, ycoord=None, 
                     values = values - gps_time_offset
                     print(f'  - Applied GPS time reference offset to {las_name}')
 
+                # LAS 1.4 (point format >= 6) stores scan_angle as int16 in 0.006°/unit.
+                # Earlier formats store scan_angle_rank as int8 in 1°/unit (already degrees).
+                # Normalise to degrees here so the NetCDF always stores degree values.
+                if lower_name == 'scan_angle' and las.header.point_format.id >= 6:
+                    values = values.astype(np.float32) * 0.006
+                    print(f'  - Converted LAS 1.4 scan_angle int16 → degrees (×0.006)')
+
                 data_dict[name] = values
                 break # Found a match for this variable, stop checking possible names
 
@@ -495,7 +502,12 @@ def read_las_generator(las_filepath, cf_crs, variable_mapping, chunk_size=1_000_
                                         "contains GPS time. Call compute_gps_time_reference() first."
                                     )
                                 val = val - gps_time_offset
-                                
+
+                            # LAS 1.4 (point format >= 6) stores scan_angle as int16 in
+                            # 0.006°/unit; normalise to degrees for consistent NetCDF storage.
+                            if lower_name == 'scan_angle' and f.header.point_format.id >= 6:
+                                val = val.astype(np.float32) * 0.006
+
                             data[netcdf_var] = val
                             break # Found match, move to next var
 
