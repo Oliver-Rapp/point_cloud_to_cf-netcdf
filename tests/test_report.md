@@ -1,6 +1,6 @@
 # Round-trip test report
 
-**Date:** 2026-03-12T14:29:56Z  
+**Date:** 2026-03-12T15:07:52Z  
 **Branch:** integration/round-trip-test  
 
 ---
@@ -185,7 +185,7 @@
 | red round-trip | ✅ | max_diff=0 |
 | green round-trip | ✅ | max_diff=0 |
 | blue round-trip | ✅ | max_diff=0 |
-| gps_time round-trip | ✅ | max_err=18.129 s |
+| gps_time round-trip | ✅ | max_err=0.000000 s |
 | scan_angle round-trip | ✅ | max_err=0.0040 deg |
 | CRS in output LAS | ✅ | 32633 |
 
@@ -198,7 +198,7 @@
 | x accuracy (LAS→PLY) | ✅ | max_err=0.000000 m (tol=0.01 m) |
 | y accuracy (LAS→PLY) | ✅ | max_err=0.000000 m (tol=0.01 m) |
 | z accuracy (LAS→PLY) | ✅ | max_err=0.000031 m (tol=0.01 m) |
-| utm_crs comment in PLY | ✅ | processing_time_epoch=1773325794.376625; utm_crs=PRO... |
+| utm_crs comment in PLY | ✅ | processing_time_epoch=1773328070.291628; utm_crs=PRO... |
 
 ### T8: NC → PLY round-trip (T4 source)
 
@@ -222,7 +222,7 @@
 | px round-trip | ✅ | max_diff=0 |
 | py round-trip | ✅ | max_diff=0 |
 | epoch time round-trip | ✅ | max_err=0.000000 s |
-| utm_crs comment in PLY | ✅ | processing_time_epoch=1773325795.168754; utm_crs=PRO... |
+| utm_crs comment in PLY | ✅ | processing_time_epoch=1773328071.140297; utm_crs=PRO... |
 
 ### T9: NC → LAS cross-format (PLY → LAS)
 
@@ -255,5 +255,5 @@
 | No PLY with pre-existing lat/lon columns | Cannot test that code path (known NameError bug) |
 | HySpex hyperspectral intensity | 2D intensity not recoverable by design; tested that other variables are unaffected |
 | No bad/malformed inputs | No negative testing |
-| GPS time off by ~18 s (leap seconds) | Known limitation: forward conversion corrects for leap seconds, reverse does not |
+| GPS time leap seconds | Configurable via gps_leap_seconds in to_pc_config.yaml; must be updated manually if a new leap second is added |
 

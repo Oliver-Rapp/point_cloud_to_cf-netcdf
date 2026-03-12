@@ -126,9 +126,17 @@ def compute_gps_time_reference(las_filepath, leap_seconds=18):
         gps_time_0 = float(np.min(np.array(chunk.gps_time)))
 
     unix_ref = gps_time_0 + 1315964800 - leap_seconds
-    ref_dt = datetime(1970, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=unix_ref)
+    # Floor to whole seconds so the units string (which has no sub-second precision)
+    # is exact. epoch_time values are relative to this floored reference, so the
+    # fractional-second part of gps_time_0 is absorbed into epoch_time[0] rather
+    # than being silently dropped.
+    unix_ref_floor = int(unix_ref)
+    ref_dt = datetime(1970, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=unix_ref_floor)
     units_str = f"seconds since {ref_dt.strftime('%Y-%m-%d %H:%M:%S')} UTC"
-    return gps_time_0, units_str
+    # Return the GPS time corresponding to unix_ref_floor so that epoch offsets
+    # are computed relative to the same whole-second boundary as the units string.
+    gps_time_0_ref = unix_ref_floor - 1315964800 + leap_seconds
+    return gps_time_0_ref, units_str
 
 
 def las_to_df(las_filepath, cf_crs, variable_mapping, xcoord=None, ycoord=None, zcoord=None, gps_time_offset=None):

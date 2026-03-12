@@ -4,6 +4,12 @@
 processing:
   chunk_size: 5000000 # Number of points to process at once
 
+# GPS time settings
+# GPS time does not include leap seconds; UTC does.
+# gps_leap_seconds = (TAI - UTC) - 19. As of 2017-01-01 this is 18.
+# Required for correct LAS GPS time round-trip; update if a new leap second is added.
+gps_leap_seconds: 18
+
 # LAS specific settings
 las:
   version: "1.4"

@@ -269,8 +269,8 @@ def check_las_roundtrip(test_id, src_las, rt_las):
         o_gps = np.array(orig.gps_time)
         r_gps = np.array(rt.gps_time)
         err = np.max(np.abs(o_gps - r_gps))
-        passed = err < 30  # within 30 s (18 s leap second offset is expected)
-        record(test_id, "gps_time round-trip", passed, f"max_err={err:.3f} s")
+        passed = err == 0.0
+        record(test_id, "gps_time round-trip", passed, f"max_err={err:.6f} s")
     except Exception as e:
         record(test_id, "gps_time round-trip", False, str(e))
 
@@ -612,7 +612,7 @@ def generate_report(fwd_ok, rev_ok):
         "| No PLY with pre-existing lat/lon columns | Cannot test that code path (known NameError bug) |",
         "| HySpex hyperspectral intensity | 2D intensity not recoverable by design; tested that other variables are unaffected |",
         "| No bad/malformed inputs | No negative testing |",
-        "| GPS time off by ~18 s (leap seconds) | Known limitation: forward conversion corrects for leap seconds, reverse does not |",
+        "| GPS time leap seconds | Configurable via gps_leap_seconds in to_pc_config.yaml; must be updated manually if a new leap second is added |",
         "",
     ]
 

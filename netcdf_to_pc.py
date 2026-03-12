@@ -24,21 +24,31 @@ def load_config(config_path):
 
 def get_las_gps_offset(ds, config):
     """
-    Derives the offset needed to convert stored epoch_time values back to
-    LAS Adjusted GPS Time.
+    Derives the additive offset needed to convert stored epoch_time values
+    back to LAS Adjusted GPS Time:
+        las_gps_time = epoch_value + get_las_gps_offset(...)
 
-    The forward conversion (pc_to_netcdf.py) stores epoch_time as seconds
-    relative to the first point's GPS time, with the reference UTC datetime
-    encoded in the CF units attribute, e.g.:
+    The forward conversion stores epoch_time relative to a whole-second UTC
+    reference, encoded in the CF units attribute:
         units = "seconds since 2024-03-24 15:42:03 UTC"
 
-    To recover LAS Adjusted GPS Time:
-        las_gps_time = epoch_value + unix_ref - 1315964800
-    where unix_ref is the reference datetime parsed from the units string.
+    Recovery formula:
+        las_gps_time = epoch_value + unix_ref - 1315964800 + leap_seconds
+    where unix_ref is the reference datetime parsed from the units string and
+    leap_seconds is the GPS-UTC offset from to_pc_config.yaml.
 
-    Returns the float offset (unix_ref - 1315964800), or None if the units
-    string cannot be parsed (caller should fall back to legacy behaviour).
+    Raises ValueError if gps_leap_seconds is not set in config — a missing
+    value would silently corrupt GPS times, so we require it to be explicit.
+    Returns None if no epoch variable or units string is found in the file.
     """
+    if 'gps_leap_seconds' not in config:
+        raise ValueError(
+            "Missing 'gps_leap_seconds' in to_pc_config.yaml. "
+            "Add 'gps_leap_seconds: 18' (current GPS-UTC offset as of 2017-01-01). "
+            "Update this value if a new leap second has been added since the file was created."
+        )
+    leap_seconds = config['gps_leap_seconds']
+
     # Find which NetCDF variable name maps to 'epoch' in the config
     epoch_nc_var = None
     for nc_var, out_var in config['mappings'].items():
@@ -59,7 +69,7 @@ def get_las_gps_offset(ds, config):
         ref_str = ref_str.replace(' UTC', '').replace('Z', '').strip()
         ref_dt = datetime.strptime(ref_str, '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
         unix_ref = ref_dt.timestamp()
-        return unix_ref - 1315964800.0
+        return unix_ref - 1315964800.0 + leap_seconds
     except Exception as e:
         print(f"Warning: could not parse epoch_time units '{units}': {e}. GPS time will be incorrect.")
         return None
@@ -201,10 +211,9 @@ def process_and_write_las_chunked(ds, config, output_path, total_points, chunk_s
     writer_header = copy.copy(header)
     writer_header.point_count = total_points
 
-    # Compute GPS time offset from CF units (must be done before the write loop)
+    # Compute GPS time offset from CF units (must be done before the write loop).
+    # Returns None only if the file has no epoch variable (no GPS time to write).
     gps_offset = get_las_gps_offset(ds, config)
-    if gps_offset is None:
-        print("Warning: could not derive GPS time offset from CF units. GPS times will be incorrect.")
 
     print(f"Starting Chunked LAS Write to {output_path} (Chunk Size: {chunk_size})...")
 
@@ -252,11 +261,6 @@ def process_and_write_las_chunked(ds, config, output_path, total_points, chunk_s
             if 'epoch' in data:
                 if gps_offset is not None:
                     chunk_las.gps_time = data['epoch'] + gps_offset
-                else:
-                    # Legacy fallback — assumes epoch values are Unix seconds (wrong
-                    # for files produced by the current pc_to_netcdf.py, but kept as
-                    # a safety net for older NetCDF files).
-                    chunk_las.gps_time = data['epoch'] - 1315964800.0
 
             if 'intensity' in data:
                 chunk_las.intensity = data['intensity'].astype('uint16')
@@ -420,8 +424,10 @@ def main():
         out_path = f"{base}.{ext}"
 
     print(f"Opening {args.input}...")
-    # Use empty chunks to enable Dask/Lazy loading for metadata calculation
-    ds = xr.open_dataset(args.input, chunks={})
+    # decode_times=False keeps time variables as raw float64 with their CF units
+    # attribute intact, which is required for GPS time round-trip reconstruction.
+    # (decode_times=True would convert to datetime64 and strip the units attr.)
+    ds = xr.open_dataset(args.input, chunks={}, decode_times=False)
     count = ds.sizes['point']
     print(f"Total points: {count}")
     
