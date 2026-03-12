@@ -20,3 +20,17 @@ output_*
 test_data/
 project/
 config/config_bulk_conversion_2025.csv
+
+# Python environment
+.venv/
+__pycache__/
+*.pyc
+
+# IDE settings
+.vscode/
+
+# Large data files
+*.nc
+*.ply
+*.las
+*.laz

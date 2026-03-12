@@ -1,0 +1,44 @@
+# configuration for NetCDF to Point Cloud conversion
+
+# System / Performance Settings
+processing:
+  chunk_size: 5000000 # Number of points to process at once
+
+# LAS specific settings
+las:
+  version: "1.4"
+  point_format: 7
+  # Scale factors for coordinates (0.001 = millimeter precision)
+  scales: [0.001, 0.001, 0.001]
+
+# Variable Mappings
+# NetCDF Variable Name : Output Name
+mappings:
+  # Coordinates
+  X: x
+  Y: y
+  Z: z
+  
+  # Orientation / Vectors
+  nx: nx
+  ny: ny
+  nz: nz
+  vx: vx
+  vy: vy
+  vz: vz
+  
+  # Color
+  red: red
+  green: green
+  blue: blue
+  
+  # Sensor info
+  intensity: intensity
+  scan_angle_rank: scan_angle
+  px: px
+  py: py
+  
+  # Time
+  gps_time: epoch    # Old naming convention
+  epoch_time: epoch  # New naming convention
+  time: epoch        # Another common convention
