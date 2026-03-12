@@ -257,8 +257,10 @@ def create_netcdf_stream(metadata, data_generator, variable_mapping, output_file
 
             # Create variable with explicit chunksizes so netCDF4 never has to buffer
             # the full dimension in memory when writing partial slices.
+            # Clamp to num_points so small test files don't raise "chunksize > dimension".
+            actual_chunk = min(chunk_write_size, num_points)
             v = ncfile.createVariable(var_name, dtype, ('point',), zlib=True, complevel=1,
-                                      chunksizes=(chunk_write_size,))
+                                      chunksizes=(actual_chunk,))
             
             # Apply attributes
             for attr, val in attributes.items():

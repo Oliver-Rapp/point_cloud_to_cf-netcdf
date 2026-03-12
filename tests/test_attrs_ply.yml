@@ -1,0 +1,41 @@
+# Global attributes for PLY round-trip test
+# Source: HySpex VNIR 1800, 2024-08-19, Svalbard area, UTM zone 33N
+
+title:
+  value: "Test PLY round-trip: HySpex VNIR 1800 sample (100k points)"
+
+summary:
+  value: "100,000-point crop of HySpex VNIR 1800 georeferenced point cloud used for round-trip conversion testing."
+
+keywords:
+  value: "Earth Science > Land Surface > Topography > Terrain Elevation > Digital Surface Model (DSM)"
+
+keywords_vocabulary:
+  value: "GCMD:GCMD Keywords"
+
+time_coverage_start:
+  value: "2024-08-19T16:06:04Z"
+
+time_coverage_end:
+  value: "2024-08-19T16:30:00Z"
+
+creator_name:
+  value: "Test User"
+
+creator_type:
+  value: "person"
+
+creator_email:
+  value: "test@met.no"
+
+creator_institution:
+  value: "Norwegian Meteorological Institute (MET)"
+
+creator_url:
+  value: "https://orcid.org/0000-0000-0000-0000"
+
+project:
+  value: "Round-trip testing"
+
+license:
+  value: "https://creativecommons.org/licenses/by/4.0/"

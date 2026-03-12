@@ -8,6 +8,7 @@ import yaml
 import laspy
 import copy
 import pyproj
+from datetime import datetime, timezone, timedelta
 
 def load_config(config_path):
     """Loads variables and settings from a YAML file."""
@@ -20,6 +21,49 @@ def load_config(config_path):
         print(f"Error: Config file '{config_path}' appears to be empty.")
         sys.exit(1)
     return config
+
+def get_las_gps_offset(ds, config):
+    """
+    Derives the offset needed to convert stored epoch_time values back to
+    LAS Adjusted GPS Time.
+
+    The forward conversion (pc_to_netcdf.py) stores epoch_time as seconds
+    relative to the first point's GPS time, with the reference UTC datetime
+    encoded in the CF units attribute, e.g.:
+        units = "seconds since 2024-03-24 15:42:03 UTC"
+
+    To recover LAS Adjusted GPS Time:
+        las_gps_time = epoch_value + unix_ref - 1315964800
+    where unix_ref is the reference datetime parsed from the units string.
+
+    Returns the float offset (unix_ref - 1315964800), or None if the units
+    string cannot be parsed (caller should fall back to legacy behaviour).
+    """
+    # Find which NetCDF variable name maps to 'epoch' in the config
+    epoch_nc_var = None
+    for nc_var, out_var in config['mappings'].items():
+        if out_var == 'epoch' and nc_var in ds:
+            epoch_nc_var = nc_var
+            break
+
+    if epoch_nc_var is None:
+        return None
+
+    units = ds[epoch_nc_var].attrs.get('units', '')
+    if not units.startswith('seconds since '):
+        return None
+
+    try:
+        ref_str = units[len('seconds since '):].strip()
+        # Remove trailing timezone label (UTC / Z) before parsing
+        ref_str = ref_str.replace(' UTC', '').replace('Z', '').strip()
+        ref_dt = datetime.strptime(ref_str, '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
+        unix_ref = ref_dt.timestamp()
+        return unix_ref - 1315964800.0
+    except Exception as e:
+        print(f"Warning: could not parse epoch_time units '{units}': {e}. GPS time will be incorrect.")
+        return None
+
 
 def parse_args():
     """Handles command line arguments."""
@@ -99,9 +143,9 @@ def get_chunk(ds, config, start, end):
             elif out_var in ['x', 'y', 'z']:
                 values = values.astype('float64')
 
-            # 3. Standard Integers -> uint32
+            # 3. Standard Integers -> int32 (preserve sign; uint fields stay positive)
             elif np.issubdtype(values.dtype, np.integer):
-                 values = values.astype('uint32')
+                 values = values.astype('int32')
             
             # 4. Standard Floats -> float32
             elif np.issubdtype(values.dtype, np.floating):
@@ -157,8 +201,13 @@ def process_and_write_las_chunked(ds, config, output_path, total_points, chunk_s
     writer_header = copy.copy(header)
     writer_header.point_count = total_points
 
+    # Compute GPS time offset from CF units (must be done before the write loop)
+    gps_offset = get_las_gps_offset(ds, config)
+    if gps_offset is None:
+        print("Warning: could not derive GPS time offset from CF units. GPS times will be incorrect.")
+
     print(f"Starting Chunked LAS Write to {output_path} (Chunk Size: {chunk_size})...")
-    
+
     # Flag to ensure we only warn about hyperspectral data once
     hyperspectral_warning_shown = False
 
@@ -199,9 +248,15 @@ def process_and_write_las_chunked(ds, config, output_path, total_points, chunk_s
                     chunk_las.green = data['green'].astype('uint16')
                     chunk_las.blue = data['blue'].astype('uint16')
 
-            # Handle Time: Convert Unix (1970) to Adjusted GPS (1980 - 1e9)
+            # Handle Time: restore LAS Adjusted GPS Time from stored relative seconds
             if 'epoch' in data:
-                chunk_las.gps_time = data['epoch'] - 1315964800.0
+                if gps_offset is not None:
+                    chunk_las.gps_time = data['epoch'] + gps_offset
+                else:
+                    # Legacy fallback — assumes epoch values are Unix seconds (wrong
+                    # for files produced by the current pc_to_netcdf.py, but kept as
+                    # a safety net for older NetCDF files).
+                    chunk_las.gps_time = data['epoch'] - 1315964800.0
 
             if 'intensity' in data:
                 chunk_las.intensity = data['intensity'].astype('uint16')
@@ -299,14 +354,17 @@ def process_and_write_ply_chunked(ds, config, output_path, total_points, chunk_s
             f.write(f"{prop}\n".encode('utf-8'))
             
         # Write Comment
+        # Replace non-ASCII characters (e.g. degree symbol in WKT CRS) with '?'
+        # so that plyfile (which requires ASCII headers) can parse the file.
+        crs_ascii = metadata['crs'].encode('ascii', errors='replace').decode('ascii')
         comment_str = (
             f"comment processing_time_epoch={metadata['processing_time']:.6f}; "
-            f"utm_crs={metadata['crs']}; "
+            f"utm_crs={crs_ascii}; "
             f"source_file={metadata['source']}; "
             f"BBox = [{metadata['bbox'][0]:.4f}, {metadata['bbox'][1]:.4f}, "
             f"{metadata['bbox'][2]:.4f}, {metadata['bbox'][3]:.4f}]\n"
         )
-        f.write(comment_str.encode('utf-8'))
+        f.write(comment_str.encode('ascii'))
         
         f.write(b"end_header\n")
 

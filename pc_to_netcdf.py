@@ -475,6 +475,7 @@ def main():
             wavelength_dfs = None
             output_filepath = args.output_filepath
 
+            global_attributes.derive(pc_df)
             logger.info("Trying to create CF-NetCDF file(s)")
             create_netcdf(pc_df, wavelength_dfs, variable_mapping.dict, output_filepath, global_attributes.dict, cf_crs)
 
