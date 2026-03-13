@@ -61,6 +61,7 @@ python3 pc_to_netcdf.py \
     2. An inline JSON string: `'{"title": "My scan", "summary": "..."}'`
   - See `config/global_attributes.yml` for the expected attribute names and format.
   - The geospatial bounds, `date_created`, `history`, `featureType`, and `Conventions` are computed automatically and do not need to be included.
+  - For **LAS/LAZ** inputs, `time_coverage_start` and `time_coverage_end` are also derived automatically from the GPS times in the file. You can still provide them to override the derived values.
 
 - `-vm` / `--variable_mapping` (str)
   - Path to the variable mapping YAML file. Almost always `config/variable_mapping.yml`.

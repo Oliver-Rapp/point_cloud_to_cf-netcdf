@@ -4,7 +4,7 @@ from lib.read_data import read_hyspex_stream, ply_to_df, las_to_df, get_cf_crs, 
 from lib.create_netcdf import create_netcdf
 from lib.global_attributes import GlobalAttributes
 from lib.variable_mapping import VariableMapping
-from lib.read_data import get_las_metadata, read_las_generator, compute_gps_time_reference
+from lib.read_data import get_las_metadata, read_las_generator, compute_gps_time_reference, compute_time_coverage
 from lib.create_netcdf import create_netcdf_stream
 from datetime import datetime, timezone 
 import argparse
@@ -287,7 +287,6 @@ def main():
         variable_names = variable_names + ['intensity']
 
     vm_errors, vm_warnings = variable_mapping.check(variable_names)
-    #vm_errors, vm_warnings = [], [] # Use this line to bypass checking of variables
 
     # Read the PLY file into a pandas DataFrame
     data_errors = []
@@ -327,7 +326,18 @@ def main():
             ga['date_created'] = now
             ga['history'] = f"{now}: Converted from LAS to NetCDF via streaming."
 
-        # 3b. Validate global attributes and variable mapping (mirrors PLY path)
+        # 3b. Derive time coverage from GPS time if not provided by the user
+        leap_seconds = variable_mapping.dict.get('epoch_time', {}).get('gps_leap_seconds', 18)
+        tc_start, tc_end = compute_time_coverage(args.las_filepath, leap_seconds)
+        if tc_start is not None:
+            if 'time_coverage_start' not in ga:
+                ga['time_coverage_start'] = tc_start
+                ga['time_coverage_end'] = tc_end
+                logger.info(f"Auto-derived time_coverage_start={tc_start}, time_coverage_end={tc_end} from GPS time")
+            else:
+                logger.info(f"Using user-provided time_coverage_start={ga['time_coverage_start']}, time_coverage_end={ga['time_coverage_end']}")
+
+        # 3c. Validate global attributes and variable mapping (mirrors PLY path)
         reformatting_errors, reformatting_warnings = global_attributes.reformat_attributes()
         ga_errors, ga_warnings = global_attributes.check()
 
@@ -346,7 +356,6 @@ def main():
             sys.exit(1)
 
         # 4. Compute GPS time reference (also validates Adjusted GPS Time encoding)
-        leap_seconds = variable_mapping.dict.get('epoch_time', {}).get('gps_leap_seconds', 18)
         gps_time_0, time_units = compute_gps_time_reference(args.las_filepath, leap_seconds)
         logger.info(f"GPS time reference: {time_units}")
 
@@ -396,7 +405,6 @@ def main():
 
     reformatting_errors, reformatting_warnings = global_attributes.reformat_attributes()
     ga_errors, ga_warnings = global_attributes.check()
-    #ga_errors, ga_warnings = [], [] # Use this line to bypass check of global attributes
 
     errors = data_errors + ga_errors + reformatting_errors + vm_errors + crs_errors
     warnings = data_warnings + ga_warnings + reformatting_warnings + vm_warnings + crs_warnings

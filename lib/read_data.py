@@ -48,6 +48,7 @@ def get_cf_crs(ply_filepath=None, proj4str=None):
     """
     errors = []
     warnings = []
+    cf_crs = None
 
     if ply_filepath:
         try:
@@ -55,20 +56,21 @@ def get_cf_crs(ply_filepath=None, proj4str=None):
             # get projection string from the comment
             ind_crs = comment_str.find("utm_crs")
             if ind_crs == -1:
-                return None
+                warnings.append("No 'utm_crs' found in PLY header comment.")
+                return None, errors, warnings
 
             proj4str = comment_str[ind_crs:].split(";")[0].split("utm_crs")[1]
             proj4str = proj4str[proj4str.find("=")+1:]
             crs = CRS.from_proj4(proj4str)
             cf_crs = crs.to_cf()
-        except:
-            warnings.append("Unable to compute CRS from proj4str in comments of header in PLY file. This is not required if latitude and longitude are already in the PLY file. You can alternatively use the proj4str or crs_config arguments.")
+        except Exception as e:
+            warnings.append(f"Unable to compute CRS from proj4str in PLY header comment ({e}). This is not required if latitude and longitude are already in the PLY file. You can alternatively use the proj4str or crs_config arguments.")
     elif proj4str:
         try:
             crs = CRS.from_proj4(proj4str)
             cf_crs = crs.to_cf()
-        except:
-            errors.append("Unable to compute CRS from proj4str provided")
+        except Exception as e:
+            errors.append(f"Unable to compute CRS from proj4str provided: {e}")
     else:
         cf_crs = None
         errors.append("Couldn't find proj4str to compute CRS variable from")
@@ -99,6 +101,45 @@ def list_variables_in_las(las_filepath):
         # Get dimension names (e.g., X, Y, Z, Intensity, etc.)
         # dimension_names is a property of the point format
         return list(f.header.point_format.dimension_names)
+
+def compute_time_coverage(las_filepath, leap_seconds=18):
+    """
+    Scan all GPS times in a LAS/LAZ file and return ISO8601 UTC strings for
+    time_coverage_start and time_coverage_end.
+
+    Returns (time_coverage_start, time_coverage_end) as strings in the format
+    'YYYY-MM-DDTHH:MM:SSZ', or (None, None) if the file has no gps_time dimension.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    GPS_EPOCH_OFFSET = 1315964800  # seconds between GPS epoch (1980-01-06) and Unix epoch
+
+    with laspy.open(las_filepath) as f:
+        if 'gps_time' not in [d.lower() for d in f.header.point_format.dimension_names]:
+            return None, None
+        if not f.header.global_encoding.gps_time_type:
+            raise ValueError(
+                f"LAS file '{las_filepath}' uses GPS Week Time (global encoding bit 0 = 0). "
+                "Only Adjusted GPS Time (bit 0 = 1) is supported."
+            )
+        gps_min = np.inf
+        gps_max = -np.inf
+        for chunk in f.chunk_iterator(1_000_000):
+            vals = np.array(chunk.gps_time)
+            chunk_min = float(np.min(vals))
+            chunk_max = float(np.max(vals))
+            if chunk_min < gps_min:
+                gps_min = chunk_min
+            if chunk_max > gps_max:
+                gps_max = chunk_max
+
+    def gps_to_iso(gps_t):
+        unix = gps_t + GPS_EPOCH_OFFSET - leap_seconds
+        dt = datetime(1970, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=int(unix))
+        return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+
+    return gps_to_iso(gps_min), gps_to_iso(gps_max)
+
 
 def compute_gps_time_reference(las_filepath, leap_seconds=18):
     """
@@ -311,7 +352,7 @@ def ply_to_df(ply_filepath, cf_crs, variable_mapping, xcoord=None, ycoord=None, 
             processed_dfs.append(df)
         dfs = processed_dfs
     else:
-        pass
+        dfs = dataframes
 
     combined_df = combine_dataframes(dfs)
 

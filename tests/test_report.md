@@ -1,6 +1,6 @@
 # Round-trip test report
 
-**Date:** 2026-03-12T15:59:59Z  
+**Date:** 2026-03-13T12:47:41Z  
 **Branch:** integration/round-trip-test  
 
 ---
@@ -201,7 +201,7 @@
 | x accuracy (LAS→PLY) | ✅ | max_err=0.000000 m (tol=0.01 m) |
 | y accuracy (LAS→PLY) | ✅ | max_err=0.000000 m (tol=0.01 m) |
 | z accuracy (LAS→PLY) | ✅ | max_err=0.000000 m (tol=0.01 m) |
-| utm_crs comment in PLY | ✅ | processing_time_epoch=1773331196.758800; utm_crs=PRO... |
+| utm_crs comment in PLY | ✅ | processing_time_epoch=1773406058.796753; utm_crs=PRO... |
 
 ### T8: NC → PLY round-trip (T4 source)
 
@@ -225,7 +225,7 @@
 | px round-trip | ✅ | max_diff=0 |
 | py round-trip | ✅ | max_diff=0 |
 | epoch time round-trip | ✅ | max_err=0.000000 s |
-| utm_crs comment in PLY | ✅ | processing_time_epoch=1773331197.546582; utm_crs=PRO... |
+| utm_crs comment in PLY | ✅ | processing_time_epoch=1773406059.698529; utm_crs=PRO... |
 
 ### T9: NC → LAS cross-format (PLY → LAS)
 
