@@ -123,13 +123,6 @@ def main():
         help='Global attributes defined by user. Should be either 1) a JSON string with key/value pairs for global attributes, 2) a yaml file including this information 3) A toml file including this information'
         )
     parser.add_argument(
-        '-mga',
-        '--met_global_attributes',
-        type=str,
-        help='Global attributes defined by MET, a yaml file',
-        default='config/global_attributes.yml'
-        )
-    parser.add_argument(
         '-vm',
         '--variable_mapping',
         type=str,
@@ -305,7 +298,7 @@ def main():
         # We need them now because we are going to write and exit immediately.
         logger.info("Reading in global attributes (Early Load)")
         global_attributes = GlobalAttributes()
-        global_attributes.read_global_attributes(args.user_global_attributes, args.met_global_attributes)
+        global_attributes.read_global_attributes(args.user_global_attributes, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config', 'global_attributes.yml'))
 
         # 2. Get Metadata Fast (Header only, no heavy memory usage)
         metadata = get_las_metadata(args.las_filepath, cf_crs)
@@ -401,7 +394,7 @@ def main():
     # Read the global attributes from the specified CSV file
     logger.info("Reading in global attributes")
     global_attributes = GlobalAttributes()
-    global_attributes.read_global_attributes(args.user_global_attributes, args.met_global_attributes)
+    global_attributes.read_global_attributes(args.user_global_attributes, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config', 'global_attributes.yml'))
 
     reformatting_errors, reformatting_warnings = global_attributes.reformat_attributes()
     ga_errors, ga_warnings = global_attributes.check()

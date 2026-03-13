@@ -74,9 +74,6 @@ python3 pc_to_netcdf.py \
 - `-hyspex_cal` / `--need_to_calibrate_hyspex` (`y`/`n`, default: `n`)
   - `y` applies radiometric calibration using the binary HySpex header; `n` writes raw DN values.
 
-- `-mga` / `--met_global_attributes` (str, default: `config/global_attributes.yml`)
-  - Path to the MET/ACDD attribute template. You should rarely need to change this.
-
 - `-o` / `--output_filepath` (str, default: `None`)
   - Path to the output NetCDF file. If not specified, the output file is saved to an `output/` folder in the current directory, with the same name as the input file but with a `.nc` extension.
 
