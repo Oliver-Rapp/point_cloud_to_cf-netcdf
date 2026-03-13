@@ -2,21 +2,14 @@
 # For information on which variable attributes should be included,
 # please see this section of the CF conventions
 # https://cfconventions.org/Data/cf-conventions/cf-conventions-1.11/cf-conventions.html#appendix-grid-mappings
-# grid_mapping_name: transverse_mercator
-longitude_of_prime_meridian: 0.0
-semi_major_axis: 6378137.0
-inverse_flattening: 298.257223563
-# latitude_of_projection_origin: 0.0
-# longitude_of_central_meridian: -111.0
-# false_easting: 500000.0
-# false_northing: 0.0
-# scale_factor_at_central_meridian: 0.9996
 
-
-#UTM 33N
+#UTM 33N example
 grid_mapping_name: transverse_mercator
 longitude_of_central_meridian: 15.0 # Zone 33N
 latitude_of_projection_origin: 0.0
 false_easting: 500000.0
 false_northing: 0.0
 scale_factor_at_central_meridian: 0.9996
+longitude_of_prime_meridian: 0.0
+semi_major_axis: 6378137.0
+inverse_flattening: 298.257223563

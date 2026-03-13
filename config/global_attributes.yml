@@ -10,19 +10,19 @@ title:
   description: "A short phrase or sentence describing the dataset."
   requirement: "Required."
   format: "text"
-  value: "Some title"
+  value: ""
 
 summary:
   description: "A paragraph describing the dataset."
   requirement: "Required."
   format: "text"
-  value: "Airborne hyperspectral point cloud data acquired with a HySpex Mjolnir VNIR (400–1000 nm) spectrometer mounted on Lufttransport's aircraft (Dornier DO228 POD). The sensor records 1800 spatial pixels per scan line with 186 spectral channels. Precise geolocation is derived from Applanix POS AV 410 navigation data and a 5 m DEM from the Norwegian Polar Institute, with raytracing used to produce 3D georeferenced point clouds linked to full spectra. Products can be visualised as point clouds, converted to 3D meshes, or rasterised to geocoded imagery. Applications include cryosphere, ocean, and vegetation studies, such as glacier mapping, snow property assessment, biomass estimation, and algal bloom detection."
+  value: ""
 
 keywords:
   description: "A comma-separated list of keywords or phrases."
   requirement: "Required, GCMD Science Keywords."
   format: "text"
-  value: "Earth Science > Land Surface > Topography > Terrain Elevation > Digital Surface Model (DSM)"
+  value: ""
   # Could be, for example
   # "Earth Science > Land Surface > Topography > Terrain Elevation > Digital Elevation/Terrain Model (DEM)"
   # "Earth Science > Cryosphere > Sea Ice > Sea Ice Elevation"
