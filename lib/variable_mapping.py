@@ -13,6 +13,7 @@ no_standard_name_required = [
     'px',
     'py',
     'scan_angle_rank',
+    'scan_angle',
     'intensity'
 ]
 

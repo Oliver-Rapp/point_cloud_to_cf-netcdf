@@ -134,3 +134,57 @@ The CSV must have a header row. Columns recognised as script arguments:
 | `output_filepath` | `-o` |
 
 All other columns are treated as global attribute key/value pairs and passed inline to `-uga`.
+
+---
+
+## 3. Convert a CF-NetCDF file back to a point cloud
+
+Script: `netcdf_to_pc.py`
+
+Converts a CF-NetCDF file produced by `pc_to_netcdf.py` back to PLY, LAS or LAZ. Points are processed in chunks, so large files do not need to fit in RAM. LAS/LAZ output follows the LAS 1.4 specification.
+
+### Example usage
+
+```bash
+# NetCDF -> PLY (default)
+python3 netcdf_to_pc.py /path/to/input.nc
+
+# NetCDF -> LAZ, smaller chunks for low-memory machines
+python3 netcdf_to_pc.py /path/to/input.nc --format laz --chunk-size 1000000
+```
+
+### Arguments
+
+- `input` (str, required)
+  - Path to the input NetCDF file.
+
+- `--format` (`ply`, `las` or `laz`, default: `ply`)
+  - Output format.
+
+- `--output` (str, default: `None`)
+  - Path to the output file. If omitted, the output is written next to the input with the new extension.
+
+- `--config` (str, default: `config/to_pc_config.yaml`)
+  - YAML file with the variable mappings, LAS settings and GPS leap seconds.
+
+- `--chunk-size` (int, default: from config, usually `5000000`)
+  - Number of points processed per iteration. Lower it if you run out of RAM.
+
+### Technical notes
+
+**Time encoding**
+- **PLY:** time is written as Unix epoch seconds.
+- **LAS/LAZ:** time is written as Adjusted Standard GPS Time (GPS time minus 1×10⁹), as LAS 1.4 requires. The conversion needs the GPS–UTC leap-second offset, set by `gps_leap_seconds` in `config/to_pc_config.yaml` (18 since 2017-01-01). The script stops with an error if it is missing. With the correct value, LAS → NetCDF → LAS preserves GPS time exactly.
+
+**Georeferencing**
+The CRS is taken from the OGC WKT string in the NetCDF `crs` variable, falling back to a PROJ string. It is written into the LAS VLRs.
+
+**Variable mapping**
+`config/to_pc_config.yaml` maps NetCDF variable names to output dimensions. Several NetCDF names can map to one output dimension (for example `epoch_time`, `gps_time` and `time` all map to `epoch`); the first one found is used.
+
+### Limitations
+- 2D hyperspectral intensity (point × band, from HySpex input) is skipped, so spectral data cannot be recovered yet.
+- LAS files that use GPS week time (global encoding bit 0 = 0) are not supported.
+
+### Tests
+`tests/compare_round_trip.py` runs forward and reverse conversions on sample PLY and LAS files and compares the results. The latest results are in `tests/test_report.md`.
